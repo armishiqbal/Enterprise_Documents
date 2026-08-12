@@ -33,3 +33,6 @@ def home():
     </body>
     </html>
     """
+
+
+handler = app
