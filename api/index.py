@@ -9,7 +9,6 @@ if str(ROOT_DIR) not in sys.path:
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from mangum import Mangum
 
 app = FastAPI(
     title="Enterprise Document Intelligence Platform API",
@@ -51,5 +50,3 @@ try:
     app.mount("/api", main_app)
 except Exception:
     pass
-
-handler = Mangum(app)
