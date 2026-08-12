@@ -1,14 +1,9 @@
-# Interface, API & Utilities
-fastapi>=0.110.0
-uvicorn>=0.28.0
-pydantic>=2.7.0
-python-dotenv>=1.0.1
-
-# LLM Providers & Core RAG
-openai>=1.25.0
-groq>=0.5.0
-tiktoken>=0.7.0
-
-# Document Parsers
-pypdf>=4.2.0
-python-docx>=1.1.0
+fastapi==0.110.0
+uvicorn==0.28.0
+pydantic==2.7.0
+python-dotenv==1.0.1
+openai==1.25.0
+groq==0.5.0
+tiktoken==0.7.0
+pypdf==4.2.0
+python-docx==1.1.0
