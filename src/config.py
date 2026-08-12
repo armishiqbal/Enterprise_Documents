@@ -3,10 +3,13 @@ Centralized Configuration and Logging System for Document Intelligence RAG Platf
 Loads configuration from environment variables / .env file with default fallbacks.
 Handles read-only filesystems in serverless environments (Vercel / AWS Lambda).
 """
+from __future__ import annotations
+
 import os
 import sys
 import logging
 from pathlib import Path
+from typing import Optional
 
 # Disable HuggingFace Hub symlinks on Windows to prevent [Errno 22] file lock errors
 os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
@@ -31,8 +34,8 @@ class Config:
     """Application Settings and Environment Configuration."""
 
     # API Keys (Loaded from environment, never hardcoded)
-    OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
-    GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY")
+    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
+    GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
 
     # Directory Paths — Use /tmp in serverless environments (Vercel) to prevent Read-Only File System errors
     if IS_SERVERLESS:
