@@ -1,5 +1,15 @@
+import sys
+import os
+from pathlib import Path
+
+# Add project root directory to sys.path
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from mangum import Mangum
 
 app = FastAPI(
     title="Enterprise Document Intelligence Platform API",
@@ -35,4 +45,11 @@ def home():
     """
 
 
-handler = app
+# Safely mount main API routes if available
+try:
+    from src.api import app as main_app
+    app.mount("/api", main_app)
+except Exception:
+    pass
+
+handler = Mangum(app)
