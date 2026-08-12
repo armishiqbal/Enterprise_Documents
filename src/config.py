@@ -5,21 +5,23 @@ Handles read-only filesystems in serverless environments (Vercel / AWS Lambda).
 """
 import os
 import sys
+import logging
+from pathlib import Path
 
 # Disable HuggingFace Hub symlinks on Windows to prevent [Errno 22] file lock errors
 os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-import logging
-from pathlib import Path
-from dotenv import load_dotenv
-
 # Base Directory of the Project
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Automatically load .env file if present
-load_dotenv(dotenv_path=BASE_DIR / ".env")
+# Automatically load .env file if present (safely wrapped for serverless deployments)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=BASE_DIR / ".env")
+except Exception:
+    pass
 
 # Detect serverless environment (Vercel / AWS Lambda read-only filesystem)
 IS_SERVERLESS = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or not os.access(str(BASE_DIR), os.W_OK))
@@ -54,8 +56,7 @@ class Config:
         try:
             cls.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
             cls.VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            # Fallback to /tmp if local creation fails
+        except Exception:
             tmp_upload = Path("/tmp/data/uploads")
             tmp_vector = Path("/tmp/data/vectorstore")
             tmp_upload.mkdir(parents=True, exist_ok=True)

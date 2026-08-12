@@ -1,10 +1,9 @@
 """
 ChromaDB Vector Store Manager for persistent embedding storage, multi-tenant isolation, and metadata querying.
-Includes in-memory fallback for serverless environments (Vercel).
+Includes in-memory and mock fallback for serverless environments (Vercel).
 """
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
-import chromadb
 from src.config import Config, logger
 from src.embedder import Embedder
 from src.models import DocumentChunk
@@ -20,24 +19,26 @@ class VectorStore:
     ):
         self.persist_dir = Path(persist_dir or Config.VECTOR_STORE_DIR).resolve()
         self.collection_name = collection_name
+        self.client = None
+        self.collection = None
 
         try:
+            import chromadb
             self.persist_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Initializing ChromaDB PersistentClient at '{self.persist_dir}' (Collection: '{self.collection_name}')")
             self.client = chromadb.PersistentClient(path=str(self.persist_dir))
+            self.collection = self.client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
         except Exception as e:
-            logger.warning(f"ChromaDB PersistentClient initialization fallback ({e}). Using EphemeralClient.")
-            self.client = chromadb.Client()
+            logger.warning(f"ChromaDB PersistentClient initialization fallback ({e}).")
 
-        self.collection = self.client.get_or_create_collection(
-            name=self.collection_name,
-            metadata={"hnsw:space": "cosine"},
-        )
         self.embedder = Embedder()
 
     def add_chunks(self, chunks: List[DocumentChunk]) -> int:
         """Embeds and upserts a list of DocumentChunks into the vector database."""
-        if not chunks:
+        if not chunks or not self.collection:
             return 0
 
         logger.info(f"Adding {len(chunks)} chunk(s) to vector store...")
@@ -68,6 +69,14 @@ class VectorStore:
     def get_collection_stats(self) -> Dict[str, Any]:
         """Returns statistics about stored document chunks in the collection."""
         try:
+            if not self.collection:
+                return {
+                    "collection_name": self.collection_name,
+                    "total_chunks": 0,
+                    "unique_documents": 0,
+                    "persist_directory": str(self.persist_dir),
+                }
+
             total_chunks = self.collection.count()
             unique_docs = set()
             if total_chunks > 0:
@@ -92,6 +101,8 @@ class VectorStore:
 
     def delete_document(self, doc_id: str) -> int:
         """Deletes all vector chunks associated with a specific doc_id."""
+        if not self.collection:
+            return 0
         result = self.collection.get(where={"doc_id": doc_id})
         ids_to_delete = result.get("ids", [])
         if ids_to_delete:
@@ -103,6 +114,8 @@ class VectorStore:
     def reset_store(self) -> bool:
         """Clears all stored entries in the collection."""
         try:
+            if not self.client:
+                return True
             self.client.delete_collection(name=self.collection_name)
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
