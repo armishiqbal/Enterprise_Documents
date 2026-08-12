@@ -1,12 +1,13 @@
 """
 Production FastAPI REST API server for Enterprise Document Intelligence RAG Platform.
 Exposes endpoints for file ingestion, semantic vector retrieval, grounded QA generation, and index stats.
+Supports lazy initialization for Vercel serverless functions.
 """
 from typing import List
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from src.config import Config, logger
 from src.ingestion import IngestionPipeline
 from src.retriever import Retriever
@@ -36,17 +37,60 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lazy singletons
-vector_store = VectorStore()
-retriever = Retriever(vector_store=vector_store)
-generator = RAGGenerator()
-pipeline = IngestionPipeline(vector_store=vector_store)
+# Lazy singletons for fast serverless startup
+_vector_store = None
+_retriever = None
+_generator = None
+_pipeline = None
+
+
+def get_vector_store() -> VectorStore:
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = VectorStore()
+    return _vector_store
+
+
+def get_retriever() -> Retriever:
+    global _retriever
+    if _retriever is None:
+        _retriever = Retriever(vector_store=get_vector_store())
+    return _retriever
+
+
+def get_generator() -> RAGGenerator:
+    global _generator
+    if _generator is None:
+        _generator = RAGGenerator()
+    return _generator
+
+
+def get_pipeline() -> IngestionPipeline:
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = IngestionPipeline(vector_store=get_vector_store())
+    return _pipeline
+
+
+def get_safe_stats():
+    """Returns collection stats or default metrics if vector store is uninitialized."""
+    try:
+        vs = get_vector_store()
+        return vs.get_collection_stats()
+    except Exception as e:
+        logger.warning(f"Vector store stats lookup fallback: {e}")
+        return {
+            "collection_name": "document_chunks",
+            "total_chunks": 0,
+            "unique_documents": 0,
+            "persist_directory": str(Config.VECTOR_STORE_DIR),
+        }
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def api_landing_page():
     """Renders a modern, interactive HTML landing page for the REST API."""
-    stats = vector_store.get_collection_stats()
+    stats = get_safe_stats()
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -201,7 +245,6 @@ def api_landing_page():
 
             <div class="btn-group">
                 <a href="/docs" class="btn btn-primary">📖 Open Interactive Swagger API Docs</a>
-                <a href="http://localhost:8501" target="_blank" class="btn btn-secondary">🎨 Launch Streamlit Web UI</a>
                 <a href="/health" class="btn btn-secondary">🟢 API Health JSON</a>
             </div>
 
@@ -255,7 +298,7 @@ def health_check():
 @app.get("/api/v1/stats", response_model=StatsResponse, tags=["Vector Store"])
 def get_stats():
     """Returns vector database collection index statistics."""
-    stats = vector_store.get_collection_stats()
+    stats = get_safe_stats()
     return StatsResponse(
         collection_name=stats["collection_name"],
         total_chunks=stats["total_chunks"],
@@ -272,6 +315,7 @@ async def ingest_documents(files: List[UploadFile] = File(...)):
 
     results = []
     total_chunks = 0
+    pipe = get_pipeline()
 
     for upload in files:
         temp_file = Config.UPLOAD_DIR / upload.filename
@@ -280,7 +324,7 @@ async def ingest_documents(files: List[UploadFile] = File(...)):
             with open(temp_file, "wb") as f:
                 f.write(content)
 
-            chunks = pipeline.process_file(temp_file, index_to_store=True)
+            chunks = pipe.process_file(temp_file, index_to_store=True)
             doc_id = chunks[0].doc_id if chunks else "unknown"
             file_type = chunks[0].file_type if chunks else Path(upload.filename).suffix.lstrip(".")
 
@@ -318,8 +362,11 @@ async def ingest_documents(files: List[UploadFile] = File(...)):
 def query_documents(req: QueryRequest):
     """Performs vector similarity search and generates grounded answer with inline citations."""
     try:
-        retrieved = retriever.retrieve(query=req.query, k=req.k, score_threshold=req.score_threshold)
-        gen_output = generator.generate(query=req.query, results=retrieved)
+        ret = get_retriever()
+        gen = get_generator()
+
+        retrieved = ret.retrieve(query=req.query, k=req.k, score_threshold=req.score_threshold)
+        gen_output = gen.generate(query=req.query, results=retrieved)
 
         citations = [
             CitationItem(
@@ -349,7 +396,8 @@ def query_documents(req: QueryRequest):
 @app.delete("/api/v1/documents/{doc_id}", tags=["Vector Store"])
 def delete_document(doc_id: str):
     """Deletes all document vectors matching the specified doc_id."""
-    deleted_count = vector_store.delete_document(doc_id)
+    vs = get_vector_store()
+    deleted_count = vs.delete_document(doc_id)
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found.")
     return {"message": f"Successfully deleted {deleted_count} chunk(s) for document '{doc_id}'.", "doc_id": doc_id}
@@ -358,7 +406,8 @@ def delete_document(doc_id: str):
 @app.delete("/api/v1/reset", tags=["Vector Store"])
 def reset_vector_store():
     """Resets the vector database collection."""
-    success = vector_store.reset_store()
+    vs = get_vector_store()
+    success = vs.reset_store()
     if not success:
         raise HTTPException(status_code=500, detail="Failed to reset vector database.")
     return {"message": "Vector database collection successfully reset."}

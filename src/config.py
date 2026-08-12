@@ -1,6 +1,7 @@
 """
 Centralized Configuration and Logging System for Document Intelligence RAG Platform.
 Loads configuration from environment variables / .env file with default fallbacks.
+Handles read-only filesystems in serverless environments (Vercel / AWS Lambda).
 """
 import os
 import sys
@@ -20,6 +21,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Automatically load .env file if present
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
+# Detect serverless environment (Vercel / AWS Lambda read-only filesystem)
+IS_SERVERLESS = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or not os.access(str(BASE_DIR), os.W_OK))
+
 
 class Config:
     """Application Settings and Environment Configuration."""
@@ -28,9 +32,13 @@ class Config:
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY")
 
-    # Directory Paths — resolve relative to BASE_DIR, not CWD
-    UPLOAD_DIR: Path = (BASE_DIR / os.getenv("UPLOAD_DIR", "data/uploads")).resolve()
-    VECTOR_STORE_DIR: Path = (BASE_DIR / os.getenv("VECTOR_STORE_DIR", "data/vectorstore")).resolve()
+    # Directory Paths — Use /tmp in serverless environments (Vercel) to prevent Read-Only File System errors
+    if IS_SERVERLESS:
+        UPLOAD_DIR: Path = Path("/tmp/data/uploads").resolve()
+        VECTOR_STORE_DIR: Path = Path("/tmp/data/vectorstore").resolve()
+    else:
+        UPLOAD_DIR: Path = (BASE_DIR / os.getenv("UPLOAD_DIR", "data/uploads")).resolve()
+        VECTOR_STORE_DIR: Path = (BASE_DIR / os.getenv("VECTOR_STORE_DIR", "data/vectorstore")).resolve()
 
     # Embedding & Chunking Configuration
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
@@ -42,9 +50,18 @@ class Config:
 
     @classmethod
     def ensure_directories(cls) -> None:
-        """Ensure required application directories exist."""
-        cls.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        cls.VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
+        """Ensure required application directories exist safely."""
+        try:
+            cls.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            cls.VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            # Fallback to /tmp if local creation fails
+            tmp_upload = Path("/tmp/data/uploads")
+            tmp_vector = Path("/tmp/data/vectorstore")
+            tmp_upload.mkdir(parents=True, exist_ok=True)
+            tmp_vector.mkdir(parents=True, exist_ok=True)
+            cls.UPLOAD_DIR = tmp_upload
+            cls.VECTOR_STORE_DIR = tmp_vector
 
 
 def setup_logging(level: str = Config.LOG_LEVEL) -> logging.Logger:
