@@ -3,7 +3,6 @@ fastapi>=0.110.0
 uvicorn>=0.28.0
 pydantic>=2.7.0
 python-dotenv>=1.0.1
-streamlit>=1.35.0
 
 # LLM Providers & Core RAG
 openai>=1.25.0
