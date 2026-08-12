@@ -1,0 +1,28 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment files with sensitive credentials
+.env
+
+# Data directories (ignore uploaded documents and generated vector index files)
+data/uploads/*
+!data/uploads/.gitkeep
+data/vectorstore/*
+!data/vectorstore/.gitkeep
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
