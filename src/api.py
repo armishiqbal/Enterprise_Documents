@@ -1,17 +1,17 @@
 """
 Production FastAPI REST API server for Enterprise Document Intelligence RAG Platform.
 Exposes endpoints for file ingestion, semantic vector retrieval, grounded QA generation, and index stats.
-Supports lazy initialization for Vercel serverless functions.
+Supports zero-overhead dynamic imports for Vercel serverless function compatibility.
 """
-from typing import List
+import os
+import sys
 from pathlib import Path
+from typing import List, Dict, Any, Optional
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from src.config import Config, logger
-from src.ingestion import IngestionPipeline
-from src.retriever import Retriever
-from src.generator import RAGGenerator
+
 from src.schemas import (
     QueryRequest,
     QueryResponse,
@@ -20,7 +20,6 @@ from src.schemas import (
     IngestBatchResponse,
     StatsResponse,
 )
-from src.store import VectorStore
 
 app = FastAPI(
     title="Enterprise Document Intelligence Platform API",
@@ -37,48 +36,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lazy singletons for fast serverless startup
+# Dynamic singletons for fast serverless startup
 _vector_store = None
 _retriever = None
 _generator = None
 _pipeline = None
 
 
-def get_vector_store() -> VectorStore:
+def get_vector_store():
     global _vector_store
     if _vector_store is None:
+        from src.store import VectorStore
         _vector_store = VectorStore()
     return _vector_store
 
 
-def get_retriever() -> Retriever:
+def get_retriever():
     global _retriever
     if _retriever is None:
+        from src.retriever import Retriever
         _retriever = Retriever(vector_store=get_vector_store())
     return _retriever
 
 
-def get_generator() -> RAGGenerator:
+def get_generator():
     global _generator
     if _generator is None:
+        from src.generator import RAGGenerator
         _generator = RAGGenerator()
     return _generator
 
 
-def get_pipeline() -> IngestionPipeline:
+def get_pipeline():
     global _pipeline
     if _pipeline is None:
+        from src.ingestion import IngestionPipeline
         _pipeline = IngestionPipeline(vector_store=get_vector_store())
     return _pipeline
 
 
-def get_safe_stats():
+def get_safe_stats() -> Dict[str, Any]:
     """Returns collection stats or default metrics if vector store is uninitialized."""
     try:
         vs = get_vector_store()
         return vs.get_collection_stats()
-    except Exception as e:
-        logger.warning(f"Vector store stats lookup fallback: {e}")
+    except Exception:
+        from src.config import Config
         return {
             "collection_name": "document_chunks",
             "total_chunks": 0,
@@ -286,6 +289,7 @@ def api_landing_page():
 @app.get("/health", tags=["Health"])
 def health_check():
     """System health check and status endpoint."""
+    from src.config import Config
     return {
         "status": "healthy",
         "service": "Enterprise Document Intelligence Platform API",
@@ -313,6 +317,7 @@ async def ingest_documents(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
+    from src.config import Config, logger
     results = []
     total_chunks = 0
     pipe = get_pipeline()
@@ -362,6 +367,7 @@ async def ingest_documents(files: List[UploadFile] = File(...)):
 def query_documents(req: QueryRequest):
     """Performs vector similarity search and generates grounded answer with inline citations."""
     try:
+        from src.config import logger
         ret = get_retriever()
         gen = get_generator()
 
@@ -389,6 +395,7 @@ def query_documents(req: QueryRequest):
             retrieved_count=gen_output["retrieved_count"],
         )
     except Exception as e:
+        from src.config import logger
         logger.error(f"Query processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Query error: {str(e)}")
 
