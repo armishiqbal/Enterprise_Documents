@@ -1,5 +1,6 @@
 """
 ChromaDB Vector Store Manager for persistent embedding storage, multi-tenant isolation, and metadata querying.
+Includes in-memory fallback for serverless environments (Vercel).
 """
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
@@ -10,7 +11,7 @@ from src.models import DocumentChunk
 
 
 class VectorStore:
-    """Manager for persistent ChromaDB vector store operations with multi-tenant isolation."""
+    """Manager for persistent ChromaDB vector store operations with serverless fallback."""
 
     def __init__(
         self,
@@ -18,11 +19,16 @@ class VectorStore:
         collection_name: str = "document_chunks",
     ):
         self.persist_dir = Path(persist_dir or Config.VECTOR_STORE_DIR).resolve()
-        self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.collection_name = collection_name
 
-        logger.info(f"Initializing ChromaDB PersistentClient at '{self.persist_dir}' (Collection: '{self.collection_name}')")
-        self.client = chromadb.PersistentClient(path=str(self.persist_dir))
+        try:
+            self.persist_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Initializing ChromaDB PersistentClient at '{self.persist_dir}' (Collection: '{self.collection_name}')")
+            self.client = chromadb.PersistentClient(path=str(self.persist_dir))
+        except Exception as e:
+            logger.warning(f"ChromaDB PersistentClient initialization fallback ({e}). Using EphemeralClient.")
+            self.client = chromadb.Client()
+
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"},
@@ -39,7 +45,6 @@ class VectorStore:
         ids = [chunk.chunk_id for chunk in chunks]
         texts = [chunk.page_content for chunk in chunks]
         
-        # Clean metadata dictionary for ChromaDB storage
         metadatas = []
         for chunk in chunks:
             clean_meta = {}
@@ -62,22 +67,28 @@ class VectorStore:
 
     def get_collection_stats(self) -> Dict[str, Any]:
         """Returns statistics about stored document chunks in the collection."""
-        total_chunks = self.collection.count()
+        try:
+            total_chunks = self.collection.count()
+            unique_docs = set()
+            if total_chunks > 0:
+                result = self.collection.get(include=["metadatas"])
+                for meta in result.get("metadatas", []):
+                    if meta and "doc_id" in meta:
+                        unique_docs.add(meta["doc_id"])
 
-        # Compute unique documents indexed
-        unique_docs = set()
-        if total_chunks > 0:
-            result = self.collection.get(include=["metadatas"])
-            for meta in result.get("metadatas", []):
-                if meta and "doc_id" in meta:
-                    unique_docs.add(meta["doc_id"])
-
-        return {
-            "collection_name": self.collection_name,
-            "total_chunks": total_chunks,
-            "unique_documents": len(unique_docs),
-            "persist_directory": str(self.persist_dir),
-        }
+            return {
+                "collection_name": self.collection_name,
+                "total_chunks": total_chunks,
+                "unique_documents": len(unique_docs),
+                "persist_directory": str(self.persist_dir),
+            }
+        except Exception:
+            return {
+                "collection_name": self.collection_name,
+                "total_chunks": 0,
+                "unique_documents": 0,
+                "persist_directory": str(self.persist_dir),
+            }
 
     def delete_document(self, doc_id: str) -> int:
         """Deletes all vector chunks associated with a specific doc_id."""

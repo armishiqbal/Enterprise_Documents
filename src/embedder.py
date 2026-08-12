@@ -1,10 +1,11 @@
 """
 Embedding engine wrapper using SentenceTransformers.
 Handles text and query embedding generation with lazy model initialization.
-Disables Windows symlinks to prevent [Errno 22] Invalid argument errors.
+Includes fallback hash vectorizer for lightweight serverless deployments (Vercel).
 """
 import os
 import sys
+import hashlib
 from typing import List, Optional, Dict, Any
 
 # Disable HuggingFace Hub symlinks on Windows to prevent [Errno 22] file lock errors
@@ -15,22 +16,35 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from src.config import Config, logger
 
 
-class Embedder:
-    """Wrapper class for generating text and query embeddings using SentenceTransformer with singleton model caching."""
+def _hash_vectorize(text: str, dim: int = 384) -> List[float]:
+    """Fallback 384-dimensional deterministic hash vectorizer for serverless environments."""
+    words = text.lower().split()
+    vec = [0.0] * dim
+    for w in words:
+        idx = int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % dim
+        vec[idx] += 1.0
+    norm = (sum(x * x for x in vec) ** 0.5) or 1.0
+    return [round(x / norm, 6) for x in vec]
 
-    # Class-level cache to share loaded models across all Embedder instances in the process
+
+class Embedder:
+    """Wrapper class for generating text and query embeddings with serverless fallback."""
+
     _shared_models: Dict[str, Any] = {}
 
     def __init__(self, model_name: str = Config.EMBEDDING_MODEL_NAME):
         self.model_name = model_name
+        self._use_fallback = False
 
     def _load_model(self):
-        """Lazy loader for SentenceTransformer model using process-level singleton caching."""
+        """Lazy loader for SentenceTransformer model with fallback hash vectorizer."""
+        if self._use_fallback:
+            return
+
         if self.model_name not in Embedder._shared_models:
             logger.info(f"Loading embedding model '{self.model_name}' into process memory...")
             try:
                 from sentence_transformers import SentenceTransformer
-                # Try loading with local files first if cached to avoid network latency and file locks
                 try:
                     model = SentenceTransformer(self.model_name, local_files_only=True)
                 except Exception:
@@ -38,24 +52,18 @@ class Embedder:
                 Embedder._shared_models[self.model_name] = model
                 logger.info(f"Embedding model '{self.model_name}' loaded successfully into cache.")
             except Exception as e:
-                logger.error(f"Failed to load embedding model '{self.model_name}': {e}")
-                # Retry with explicit symlinks disabled
-                try:
-                    os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
-                    from sentence_transformers import SentenceTransformer
-                    model = SentenceTransformer(self.model_name)
-                    Embedder._shared_models[self.model_name] = model
-                except Exception as retry_err:
-                    raise RuntimeError(
-                        f"Could not load embedding model '{self.model_name}': {retry_err}"
-                    ) from retry_err
+                logger.warning(f"SentenceTransformer load skipped ({e}). Using lightweight serverless hash vectorizer.")
+                self._use_fallback = True
+                return
 
-        self._model = Embedder._shared_models[self.model_name]
+        self._model = Embedder._shared_models.get(self.model_name)
 
     @property
     def dimension(self) -> int:
         """Returns the output vector dimensionality of the embedding model."""
         self._load_model()
+        if self._use_fallback or not hasattr(self, "_model"):
+            return 384
         if hasattr(self._model, "get_embedding_dimension"):
             return self._model.get_embedding_dimension()
         return self._model.get_sentence_embedding_dimension()
@@ -65,6 +73,8 @@ class Embedder:
         if not texts:
             return []
         self._load_model()
+        if self._use_fallback or not hasattr(self, "_model"):
+            return [_hash_vectorize(t) for t in texts]
         embeddings = self._model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
         return embeddings.tolist()
 
@@ -73,6 +83,7 @@ class Embedder:
         if not query or not query.strip():
             raise ValueError("Query string cannot be empty.")
         self._load_model()
+        if self._use_fallback or not hasattr(self, "_model"):
+            return _hash_vectorize(query)
         embedding = self._model.encode(query, convert_to_numpy=True, show_progress_bar=False)
         return embedding.tolist()
-
