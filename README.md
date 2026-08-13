@@ -1,9 +1,12 @@
 # Enterprise Document Intelligence RAG Platform ⚡
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/armishiqbal/Enterprise_Documents)
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.35.0-FF4B4B?style=for-the-badge&logo=streamlit)](https://streamlit.io)
+
+> 🚀 **Live Interactive Web Application**: [https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app](https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app)
 
 An enterprise-grade **Retrieval-Augmented Generation (RAG)** platform designed for intelligent document search, grounded question answering, executive summarization, and side-by-side document comparison. The system combines semantic vector search, BM25 keyword matching, cross-encoder re-ranking, and LLMs (cloud and local) to provide highly accurate, fact-checked responses backed by page-level citations from uploaded documents.
 
@@ -148,8 +151,11 @@ python run.py
 
 ## ☁️ Deployment Guide
 
-### Option 1: Streamlit Community Cloud (Free 1-Click Web Deployment)
-To host the interactive Streamlit Web UI on the web for free:
+### Option 1: Streamlit Community Cloud (Live Production Deployment)
+The interactive Streamlit Web UI is deployed and live on Streamlit Community Cloud:
+👉 **Live Web App**: [https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app](https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app)
+
+To deploy your own fork or update:
 1. Go to [https://share.streamlit.io](https://share.streamlit.io) and log in with your GitHub account.
 2. Click **"New App"**.
 3. Select Repository: `armishiqbal/Enterprise_Documents` | Branch: `main` | Main file path: `streamlit_app.py`.
