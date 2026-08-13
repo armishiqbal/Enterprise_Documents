@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class QueryRequest(BaseModel):
     """Payload for executing a RAG document query."""
-    query: str = Field(description="User question or search query string.")
+    query: str = Field(default=..., description="User question or search query string.")
     k: int = Field(default=4, ge=1, le=20, description="Number of document chunks to retrieve.")
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum similarity score threshold (0.0 to 1.0).")
 
