@@ -53,7 +53,11 @@ class TestLoaders(unittest.TestCase):
 
     def test_load_docx_success(self):
         """Verify reading a valid DOCX document using python-docx."""
-        import docx
+        try:
+            import docx
+        except ImportError:
+            raise unittest.SkipTest("python-docx package is not installed.")
+
         docx_file = self.temp_path / "document.docx"
         doc = docx.Document()
         doc.add_heading("Docx Header", level=1)
@@ -73,14 +77,17 @@ class TestLoaders(unittest.TestCase):
 
     def test_load_pdf_success(self):
         """Verify reading a synthetic valid PDF using pypdf writer."""
-        from pypdf import PdfWriter
+        try:
+            from pypdf import PdfWriter
+        except ImportError:
+            raise unittest.SkipTest("pypdf package is not installed.")
+
         pdf_file = self.temp_path / "sample.pdf"
         writer = PdfWriter()
         writer.add_blank_page(width=100, height=100)
         with open(pdf_file, "wb") as f:
             writer.write(f)
 
-        # Blank page has no text, so load_document should raise ValueError for empty document content
         with self.assertRaises(ValueError) as ctx:
             load_document(pdf_file)
         self.assertIn("Empty document", str(ctx.exception))

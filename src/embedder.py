@@ -18,7 +18,9 @@ from src.config import Config, logger
 
 def _hash_vectorize(text: str, dim: int = 384) -> List[float]:
     """Fallback 384-dimensional deterministic hash vectorizer for serverless environments."""
-    words = text.lower().split()
+    import string
+    cleaned_text = text.lower().translate(str.maketrans("", "", string.punctuation))
+    words = cleaned_text.split()
     vec = [0.0] * dim
     for w in words:
         idx = int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % dim

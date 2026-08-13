@@ -1,11 +1,9 @@
 # Enterprise Document Intelligence RAG Platform ⚡
 
-[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live_Deployment-success?style=for-the-badge&logo=vercel)](https://enterprise-documents.vercel.app)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/armishiqbal/Enterprise_Documents)
-
-> 🚀 **Live Production URL**: [https://enterprise-documents.vercel.app](https://enterprise-documents.vercel.app)  
-> 📖 **Interactive Swagger API Docs**: [https://enterprise-documents.vercel.app/docs](https://enterprise-documents.vercel.app/docs)  
-> 🟢 **API Health Endpoint**: [https://enterprise-documents.vercel.app/health](https://enterprise-documents.vercel.app/health)
+[![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.35.0-FF4B4B?style=for-the-badge&logo=streamlit)](https://streamlit.io)
 
 An enterprise-grade **Retrieval-Augmented Generation (RAG)** platform designed for intelligent document search, grounded question answering, executive summarization, and side-by-side document comparison. The system combines semantic vector search, BM25 keyword matching, cross-encoder re-ranking, and LLMs (cloud and local) to provide highly accurate, fact-checked responses backed by page-level citations from uploaded documents.
 
@@ -142,8 +140,29 @@ python run.py
   ```
 
 ### 8. Open in Browser
-- **Streamlit Web Application**: [http://localhost:8501](http://localhost:8501)
-- **FastAPI Documentation (Swagger UI)**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- 🎨 **Streamlit Web Application**: [http://localhost:8501](http://localhost:8501)
+- ⚡ **FastAPI REST Backend**: [http://localhost:8000](http://localhost:8000)
+- 📖 **FastAPI Swagger Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## ☁️ Deployment Guide
+
+### Option 1: Streamlit Community Cloud (Free 1-Click Web Deployment)
+To host the interactive Streamlit Web UI on the web for free:
+1. Go to [https://share.streamlit.io](https://share.streamlit.io) and log in with your GitHub account.
+2. Click **"New App"**.
+3. Select Repository: `armishiqbal/Enterprise_Documents` | Branch: `main` | Main file path: `streamlit_app.py`.
+4. Click **"Deploy!"**.
+
+### Option 2: Docker Containerization
+Run the full-stack containerized application using Docker Compose:
+```bash
+docker-compose up --build
+```
+Access the application:
+- Streamlit UI: `http://localhost:8501`
+- FastAPI REST Backend: `http://localhost:8000`
 
 ---
 
