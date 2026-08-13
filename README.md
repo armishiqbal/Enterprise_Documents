@@ -1,8 +1,16 @@
 # Enterprise Document Intelligence RAG Platform ⚡
 
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live_Deployment-success?style=for-the-badge&logo=vercel)](https://enterprise-documents.vercel.app)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/armishiqbal/Enterprise_Documents)
+
+> 🚀 **Live Production URL**: [https://enterprise-documents.vercel.app](https://enterprise-documents.vercel.app)  
+> 📖 **Interactive Swagger API Docs**: [https://enterprise-documents.vercel.app/docs](https://enterprise-documents.vercel.app/docs)  
+> 🟢 **API Health Endpoint**: [https://enterprise-documents.vercel.app/health](https://enterprise-documents.vercel.app/health)
+
 An enterprise-grade **Retrieval-Augmented Generation (RAG)** platform designed for intelligent document search, grounded question answering, executive summarization, and side-by-side document comparison. The system combines semantic vector search, BM25 keyword matching, cross-encoder re-ranking, and LLMs (cloud and local) to provide highly accurate, fact-checked responses backed by page-level citations from uploaded documents.
 
 ---
+
 
 ## ✨ Features
 
