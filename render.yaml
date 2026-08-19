@@ -1,4 +1,5 @@
 services:
+  # 1. FastAPI REST Backend Service
   - type: web
     name: enterprise-rag-api
     runtime: python
@@ -13,6 +14,24 @@ services:
         value: 3.11.9
       - key: LOG_LEVEL
         value: INFO
+      - key: UPLOAD_DIR
+        value: /tmp/data/uploads
+      - key: VECTOR_STORE_DIR
+        value: /tmp/data/vectorstore
+
+  # 2. Interactive Streamlit Web UI Service
+  - type: web
+    name: enterprise-rag-ui
+    runtime: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0"
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: UPLOAD_DIR
         value: /tmp/data/uploads
       - key: VECTOR_STORE_DIR
