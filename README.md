@@ -219,7 +219,16 @@ To deploy your own fork or update:
 3. Select Repository: `armishiqbal/Enterprise_Documents` | Branch: `main` | Main file path: `streamlit_app.py`.
 4. Click **"Deploy!"**.
 
-### Option 2: Docker Containerization
+### Option 2: Render (Free Cloud Webhook & FastAPI Backend)
+Deploy the live REST & Webhook API on Render for free:
+1. Go to [https://dashboard.render.com](https://dashboard.render.com) and log in with GitHub.
+2. Click **"New +"** $\to$ **"Blueprint"** (or **"Web Service"**).
+3. Connect repository: `armishiqbal/Enterprise_Documents`.
+4. Render will auto-detect `render.yaml` and configure everything automatically!
+5. Click **"Apply"** / **"Deploy"**.
+6. Your live Webhook Endpoint will be: `https://<YOUR-RENDER-NAME>.onrender.com/api/v1/webhook`.
+
+### Option 3: Docker Containerization
 Run the full-stack containerized application using Docker Compose:
 ```bash
 docker-compose up --build
