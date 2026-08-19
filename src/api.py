@@ -5,10 +5,12 @@ Supports zero-overhead dynamic imports for Vercel serverless function compatibil
 """
 import os
 import sys
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Header, Query, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
@@ -19,6 +21,8 @@ from src.schemas import (
     IngestFileResponse,
     IngestBatchResponse,
     StatsResponse,
+    WebhookEventRequest,
+    WebhookResponse,
 )
 
 app = FastAPI(
@@ -274,6 +278,16 @@ def api_landing_page():
                     <span style="color:#94A3B8; font-size:0.9rem;">Vector query & grounded QA</span>
                 </div>
                 <div class="endpoint-item">
+                    <span class="method method-get">GET</span>
+                    <span class="path">/api/v1/webhook</span>
+                    <span style="color:#94A3B8; font-size:0.9rem;">Webhook handshake & verification</span>
+                </div>
+                <div class="endpoint-item">
+                    <span class="method method-post">POST</span>
+                    <span class="path">/api/v1/webhook</span>
+                    <span style="color:#94A3B8; font-size:0.9rem;">Webhook receiver (ping, ingest, query, custom)</span>
+                </div>
+                <div class="endpoint-item">
                     <span class="method method-delete">DELETE</span>
                     <span class="path">/api/v1/documents/{{doc_id}}</span>
                     <span style="color:#94A3B8; font-size:0.9rem;">Delete document vectors</span>
@@ -418,3 +432,274 @@ def reset_vector_store():
     if not success:
         raise HTTPException(status_code=500, detail="Failed to reset vector database.")
     return {"message": "Vector database collection successfully reset."}
+
+
+# =====================================================================
+# Webhook Gateway & Dispatcher
+# =====================================================================
+
+def verify_webhook_secret(
+    secret_header: Optional[str] = None,
+    auth_header: Optional[str] = None,
+) -> bool:
+    """Validates incoming webhook request secret if WEBHOOK_SECRET is configured."""
+    from src.config import Config
+    expected_secret = Config.WEBHOOK_SECRET
+    if not expected_secret:
+        return True  # Open / test mode if no secret configured
+
+    received_secret = secret_header
+    if not received_secret and auth_header:
+        if auth_header.startswith("Bearer "):
+            received_secret = auth_header[7:].strip()
+        else:
+            received_secret = auth_header.strip()
+
+    if received_secret != expected_secret:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Invalid or missing webhook secret token.",
+        )
+    return True
+
+
+def ingest_raw_text_payload(filename: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> int:
+    """Chunks and indexes raw document text directly into the vector database."""
+    from src.config import Config
+    from src.loaders import clean_text, generate_doc_id
+    from src.models import Document
+    from src.splitter import DocumentSplitter
+
+    cleaned = clean_text(text)
+    if not cleaned:
+        return 0
+
+    temp_path = Config.UPLOAD_DIR / filename
+    doc_id = generate_doc_id(temp_path)
+
+    doc_meta = dict(metadata) if metadata else {}
+    doc_meta.update({
+        "doc_id": doc_id,
+        "filename": filename,
+        "file_type": Path(filename).suffix.lstrip(".") or "txt",
+        "source_path": str(temp_path),
+    })
+
+    doc = Document(
+        doc_id=doc_id,
+        filename=filename,
+        file_type=doc_meta["file_type"],
+        source_path=str(temp_path),
+        page_content=cleaned,
+        metadata=doc_meta,
+    )
+
+    splitter = DocumentSplitter()
+    chunks = splitter.split_documents([doc])
+
+    vs = get_vector_store()
+    return vs.add_chunks(chunks)
+
+
+@app.get("/api/v1/webhook", tags=["Webhooks"])
+def verify_webhook_endpoint(
+    challenge: Optional[str] = None,
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
+):
+    """
+    Webhook verification and challenge-response handshake endpoint.
+    Reflects back challenge parameters for validation or returns webhook service status.
+    """
+    challenge_token = challenge or hub_challenge
+    if challenge_token:
+        return Response(content=challenge_token, media_type="text/plain")
+
+    return {
+        "status": "active",
+        "service": "Enterprise Document Intelligence Webhook Gateway",
+        "supported_events": ["ping", "document.ingest", "document.query", "custom"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/api/v1/webhook", response_model=WebhookResponse, tags=["Webhooks"])
+async def handle_webhook_event(
+    payload: WebhookEventRequest,
+    secret_header: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+    auth_header: Optional[str] = Header(None, alias="Authorization"),
+):
+    """
+    Production Webhook Receiver & Event Dispatcher.
+    Supported events:
+    - `ping` / `test`: Connectivity handshake returning health confirmation.
+    - `document.ingest`: Indexes document text or markdown into ChromaDB vector store.
+    - `document.query`: Performs RAG hybrid search & grounded LLM generation with citations.
+    - `custom` / arbitrary events: Records and acknowledges payload for testing.
+    """
+    from src.config import logger
+
+    # 1. Validate Secret Token if configured
+    verify_webhook_secret(secret_header=secret_header, auth_header=auth_header)
+
+    event_name = (payload.event or payload.event_type or "ping").strip().lower()
+    event_id = f"evt_{uuid.uuid4().hex[:12]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    logger.info(f"Received webhook event '{event_name}' (ID: {event_id}, Sender: {payload.sender})")
+
+    # 2. Challenge reflection support inside JSON body
+    if payload.challenge:
+        return WebhookResponse(
+            success=True,
+            event=event_name,
+            event_id=event_id,
+            message="Challenge verified successfully.",
+            timestamp=now_iso,
+            data={"challenge": payload.challenge},
+        )
+
+    # 3. Ping / Test Handshake
+    if event_name in ["ping", "test", "health"]:
+        return WebhookResponse(
+            success=True,
+            event=event_name,
+            event_id=event_id,
+            message="Webhook connection verified successfully (pong).",
+            timestamp=now_iso,
+            data={"sender": payload.sender, "echo": payload.data},
+        )
+
+    # 4. Security System Event (Alerts, Incident Reports, SIEM Logs, Access Events)
+    if event_name in [
+        "security.alert", "security.incident", "security.log",
+        "security.event", "security.access", "security.anomaly"
+    ]:
+        data = payload.data or {}
+        alert_id = data.get("alert_id") or data.get("incident_id") or f"SEC-{uuid.uuid4().hex[:6].upper()}"
+        severity = str(data.get("severity", "MEDIUM")).upper()
+        title = data.get("title") or data.get("event_type") or "Security Event Alert"
+        description = data.get("description") or data.get("content") or data.get("log_entry") or str(data)
+
+        # Build clean structured incident document
+        incident_parts = [
+            f"# Security Incident Report: {title}",
+            f"- Incident ID: {alert_id}",
+            f"- Severity: {severity}",
+            f"- Source / Sender: {payload.sender or data.get('source', 'Security System')}",
+            f"- Timestamp: {payload.timestamp or now_iso}",
+        ]
+        if "source_ip" in data:
+            incident_parts.append(f"- Source IP: {data['source_ip']}")
+        if "target" in data or "target_user" in data:
+            incident_parts.append(f"- Target: {data.get('target') or data.get('target_user')}")
+        if "action_taken" in data:
+            incident_parts.append(f"- Action Taken: {data['action_taken']}")
+
+        incident_parts.append(f"\n## Incident Details:\n{description}")
+        incident_text = "\n".join(incident_parts)
+
+        filename = f"security_log_{alert_id}.txt"
+        sec_metadata = {
+            "type": "security_incident",
+            "alert_id": alert_id,
+            "severity": severity,
+            "sender": payload.sender or "security_system",
+        }
+        sec_metadata.update(data.get("metadata", {}))
+
+        indexed_count = ingest_raw_text_payload(filename=filename, text=incident_text, metadata=sec_metadata)
+
+        return WebhookResponse(
+            success=True,
+            event=event_name,
+            event_id=event_id,
+            message=f"Security alert '{alert_id}' ({severity}) ingested and indexed into RAG memory ({indexed_count} chunk(s)).",
+            timestamp=now_iso,
+            data={
+                "alert_id": alert_id,
+                "severity": severity,
+                "filename": filename,
+                "chunks_indexed": indexed_count,
+            },
+        )
+
+    # 5. Document Ingestion Event
+    if event_name in ["document.ingest", "ingest", "document_ingest"]:
+        data = payload.data or {}
+        filename = data.get("filename") or f"webhook_doc_{uuid.uuid4().hex[:6]}.txt"
+        content = data.get("content") or data.get("text") or data.get("raw_text") or ""
+
+        if not content or not str(content).strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Missing 'content' or 'text' in data dictionary for document.ingest event.",
+            )
+
+        metadata = data.get("metadata", {})
+        if payload.sender:
+            metadata["sender"] = payload.sender
+
+        indexed_count = ingest_raw_text_payload(filename=filename, text=str(content), metadata=metadata)
+
+        return WebhookResponse(
+            success=True,
+            event=event_name,
+            event_id=event_id,
+            message=f"Successfully ingested and indexed {indexed_count} chunk(s) from '{filename}'.",
+            timestamp=now_iso,
+            data={
+                "filename": filename,
+                "chunks_indexed": indexed_count,
+                "metadata": metadata,
+            },
+        )
+
+    # 6. Document Query / RAG QA / Security Investigation Event
+    if event_name in ["document.query", "query", "document_query", "ask", "security.query", "security.investigate"]:
+        data = payload.data or {}
+        query_text = data.get("query") or data.get("question") or data.get("prompt")
+        if not query_text or not str(query_text).strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Missing 'query' or 'question' in data dictionary for document.query event.",
+            )
+
+        k = int(data.get("k", 4))
+        score_threshold = float(data.get("score_threshold", 0.0))
+
+        ret = get_retriever()
+        gen = get_generator()
+
+        retrieved = ret.retrieve(query=str(query_text), k=k, score_threshold=score_threshold)
+        gen_output = gen.generate(query=str(query_text), results=retrieved)
+
+        from src.guardrails import SelfCorrectionGuardrail
+        grounding = SelfCorrectionGuardrail.evaluate_groundedness(gen_output["answer"], retrieved)
+
+        return WebhookResponse(
+            success=True,
+            event=event_name,
+            event_id=event_id,
+            message="Query processed successfully.",
+            timestamp=now_iso,
+            data={
+                "query": query_text,
+                "answer": gen_output["answer"],
+                "model": gen_output["model"],
+                "retrieved_count": gen_output["retrieved_count"],
+                "citations": gen_output["citations"],
+                "groundedness": grounding,
+            },
+        )
+
+    # 6. Generic / Custom Event Fallback
+    return WebhookResponse(
+        success=True,
+        event=event_name,
+        event_id=event_id,
+        message=f"Event '{event_name}' received and recorded.",
+        timestamp=now_iso,
+        data={
+            "received_payload": payload.data,
+            "sender": payload.sender,
+        },
+    )

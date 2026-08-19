@@ -149,6 +149,64 @@ python run.py
 
 ---
 
+## 🪝 Webhook Integration Guide
+
+The FastAPI backend exposes a full-featured Webhook gateway at `/api/v1/webhook` for easy integration with external services, automated pipelines, testing tools, Slack/Discord bots, and Zapier.
+
+### 1. Webhook Handshake & Verification (`GET`)
+```bash
+# Challenge reflection handshake
+curl -X GET "http://localhost:8000/api/v1/webhook?challenge=my_test_challenge_123"
+# Response: my_test_challenge_123
+
+# Service status check
+curl -X GET "http://localhost:8000/api/v1/webhook"
+```
+
+### 2. Ping / Connectivity Test (`POST`)
+```bash
+curl -X POST "http://localhost:8000/api/v1/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "ping",
+    "sender": "external_test_app",
+    "data": { "message": "ping from test project" }
+  }'
+```
+
+### 3. Direct Document Text Ingestion (`POST`)
+```bash
+curl -X POST "http://localhost:8000/api/v1/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "document.ingest",
+    "sender": "cms_webhook",
+    "data": {
+      "filename": "company_handbook.txt",
+      "content": "Employees receive 25 days PTO annually. Core working hours are 9:00 AM to 5:00 PM EST.",
+      "metadata": { "department": "HR" }
+    }
+  }'
+```
+
+### 4. RAG Query via Webhook (`POST`)
+```bash
+curl -X POST "http://localhost:8000/api/v1/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "document.query",
+    "data": {
+      "query": "How many days of PTO do employees receive?",
+      "k": 3
+    }
+  }'
+```
+
+### 5. Optional Secret Token Authentication
+To secure your webhook endpoint, set `WEBHOOK_SECRET` in your `.env` file. Then pass either header:
+- `X-Webhook-Secret: <your_secret>`
+- `Authorization: Bearer <your_secret>`
+
 ## ☁️ Deployment Guide
 
 ### Option 1: Streamlit Community Cloud (Live Production Deployment)

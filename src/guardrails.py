@@ -42,11 +42,11 @@ class SelfCorrectionGuardrail:
 
         if not answer_words:
             return {
-                "groundedness_score": 0.95,
-                "score_percent": "95%",
-                "confidence_label": "High Confidence (Factually Verified)",
+                "groundedness_score": 0.50,
+                "score_percent": "50%",
+                "confidence_label": "Moderate Confidence",
                 "is_verified": True,
-                "badge_color": "#16A34A",
+                "badge_color": "#EAB308",
             }
 
         # Count matching terms with exact match, stem match, or substring presence

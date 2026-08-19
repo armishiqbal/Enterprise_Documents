@@ -55,3 +55,23 @@ class StatsResponse(BaseModel):
     total_chunks: int
     unique_documents: int
     persist_directory: str
+
+
+class WebhookEventRequest(BaseModel):
+    """Incoming webhook event payload supporting ping, ingestion, query, and custom events."""
+    event: Optional[str] = Field(default=None, description="Event type name (e.g. 'ping', 'document.ingest', 'document.query', 'custom').")
+    event_type: Optional[str] = Field(default=None, description="Alternative alias for event name.")
+    data: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Event payload body and parameters.")
+    timestamp: Optional[str] = Field(default=None, description="Event timestamp (ISO 8601 string or epoch).")
+    sender: Optional[str] = Field(default=None, description="Identifier of the sending system or webhook client.")
+    challenge: Optional[str] = Field(default=None, description="Challenge token for webhook verification/handshake.")
+
+
+class WebhookResponse(BaseModel):
+    """Structured response payload returned to webhook caller."""
+    success: bool = True
+    event: str
+    event_id: str
+    message: str
+    timestamp: str
+    data: Optional[Dict[str, Any]] = None

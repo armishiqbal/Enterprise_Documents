@@ -33,9 +33,10 @@ IS_SERVERLESS = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"
 class Config:
     """Application Settings and Environment Configuration."""
 
-    # API Keys (Loaded from environment, never hardcoded)
+    # API Keys & Webhook (Loaded from environment, never hardcoded)
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
+    WEBHOOK_SECRET: Optional[str] = os.getenv("WEBHOOK_SECRET")
 
     # Directory Paths — Use /tmp in serverless environments (Vercel) to prevent Read-Only File System errors
     if IS_SERVERLESS:
