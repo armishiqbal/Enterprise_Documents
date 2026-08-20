@@ -209,24 +209,25 @@ To secure your webhook endpoint, set `WEBHOOK_SECRET` in your `.env` file. Then 
 
 ## ☁️ Deployment Guide
 
-### Option 1: Streamlit Community Cloud (Live Production Deployment)
-The interactive Streamlit Web UI is deployed and live on Streamlit Community Cloud:
-👉 **Live Web App**: [https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app](https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app)
+### Option 1: Vercel (100% Free Full-Stack Next.js + FastAPI Webhook)
+Deploy both the **Next.js Frontend** and the **FastAPI Webhook Backend** together on Vercel with zero configuration:
+1. Go to [https://vercel.com](https://vercel.com) and log in with GitHub.
+2. Click **"Add New..."** $\to$ **"Project"**.
+3. Import your repository: `armishiqbal/Enterprise_Documents`.
+4. Vercel automatically reads `vercel.json` and builds both Next.js and Python functions.
+5. Click **"Deploy"**.
+6. **Your URLs**:
+   - 🎨 **Next.js Web UI**: `https://<YOUR-PROJECT>.vercel.app`
+   - 🪝 **Live Webhook Endpoint**: `https://<YOUR-PROJECT>.vercel.app/api/v1/webhook`
+   - 📖 **Swagger API Docs**: `https://<YOUR-PROJECT>.vercel.app/docs`
 
-To deploy your own fork or update:
+### Option 2: Streamlit Community Cloud
+Deploy the original Streamlit interface on Streamlit Community Cloud:
+👉 **Live Web App**: [https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app](https://enterprisedocuments-mykuyzjycbucehracp2jfv.streamlit.app)
 1. Go to [https://share.streamlit.io](https://share.streamlit.io) and log in with your GitHub account.
 2. Click **"New App"**.
 3. Select Repository: `armishiqbal/Enterprise_Documents` | Branch: `main` | Main file path: `streamlit_app.py`.
 4. Click **"Deploy!"**.
-
-### Option 2: Render (Free Cloud Webhook & FastAPI Backend)
-Deploy the live REST & Webhook API on Render for free:
-1. Go to [https://dashboard.render.com](https://dashboard.render.com) and log in with GitHub.
-2. Click **"New +"** $\to$ **"Blueprint"** (or **"Web Service"**).
-3. Connect repository: `armishiqbal/Enterprise_Documents`.
-4. Render will auto-detect `render.yaml` and configure everything automatically!
-5. Click **"Apply"** / **"Deploy"**.
-6. Your live Webhook Endpoint will be: `https://<YOUR-RENDER-NAME>.onrender.com/api/v1/webhook`.
 
 ### Option 3: Docker Containerization
 Run the full-stack containerized application using Docker Compose:
