@@ -15,6 +15,7 @@ from typing import Optional
 os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 # Base Directory of the Project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,7 +37,8 @@ class Config:
     # API Keys & Webhook (Loaded from environment, never hardcoded)
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
-    WEBHOOK_SECRET: Optional[str] = os.getenv("WEBHOOK_SECRET")
+    API_KEY: Optional[str] = os.getenv("API_KEY")
+    WEBHOOK_SECRET: Optional[str] = os.getenv("WEBHOOK_SECRET", os.getenv("API_KEY"))
 
     # Directory Paths — Use /tmp in serverless environments (Vercel) to prevent Read-Only File System errors
     if IS_SERVERLESS:

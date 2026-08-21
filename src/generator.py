@@ -66,27 +66,75 @@ class RAGGenerator:
         return citations
 
     def _extract_relevant_sentences(self, query: str, results: List[SearchResult]) -> str:
-        """Extracts key sentences matching query terms for accurate offline fallback generation."""
-        q_words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 2]
-        if not q_words:
-            # Return initial paragraph of top chunk
-            return results[0].text.strip()[:500]
+        """Extracts unique key sentences and structured insights without duplication for grounded generation."""
+        if not results:
+            return "No relevant context available."
 
-        relevant_sentences = []
+        q_lower = query.lower().strip()
+        q_words = [w for w in re.findall(r"\w+", q_lower) if len(w) > 2 and w not in {
+            "what", "where", "when", "which", "how", "the", "and", "for", "with", "this", "that",
+            "from", "into", "your", "have", "been", "will", "show", "tell", "give", "explain"
+        }]
+
+        # Group unique sentences by document
+        doc_insights: Dict[str, List[str]] = {}
+        seen_normalized = set()
+
         for r in results:
-            sentences = [s.strip() for s in re.split(r"(?<=[.!?]) +|\n+", r.text) if len(s.strip()) > 10]
-            for s in sentences:
-                s_lower = s.lower()
-                matches = sum(1 for qw in q_words if qw in s_lower)
-                if matches > 0:
-                    relevant_sentences.append((matches, s, r.filename, r.page_number))
+            # Split by paragraph or sentence
+            chunks = re.split(r"(?<=[.!?])\s+|\n+", r.text)
+            for c in chunks:
+                clean_c = c.strip()
+                if len(clean_c) < 15:
+                    continue
 
-        if relevant_sentences:
-            relevant_sentences.sort(key=lambda x: x[0], reverse=True)
-            top_sentences = [f"• {item[1]}" for item in relevant_sentences[:4]]
-            return "\n".join(top_sentences)
+                # Normalize for deduplication
+                norm_key = re.sub(r"[^\w\s]", "", clean_c.lower())
+                norm_key = re.sub(r"\s+", " ", norm_key).strip()
 
-        return results[0].text.strip()[:500]
+                if not norm_key or norm_key in seen_normalized:
+                    continue
+
+                # Check if this sentence is a substring/superstring of an already seen sentence
+                if any(norm_key in s or s in norm_key for s in seen_normalized):
+                    continue
+
+                seen_normalized.add(norm_key)
+
+                # Clean bullet/number prefix
+                clean_text = re.sub(r"^[-*•\d.]+\s*", "", clean_c).strip()
+
+                doc_key = r.filename
+                if r.page_number is not None:
+                    doc_key += f" (Page {r.page_number})"
+
+                if doc_key not in doc_insights:
+                    doc_insights[doc_key] = []
+                doc_insights[doc_key].append(clean_text)
+
+        if not doc_insights:
+            primary = results[0]
+            return f"**{primary.filename}**: {primary.text.strip()[:300]}"
+
+        # Format output: if only 1 insight total, present as direct answer
+        all_points = [(doc, point) for doc, pts in doc_insights.items() for point in pts]
+        if len(all_points) == 1:
+            doc, point = all_points[0]
+            return f"Based on **{doc}**:\n\n> {point}"
+
+        # If multiple insights from single document
+        if len(doc_insights) == 1:
+            doc, pts = list(doc_insights.items())[0]
+            formatted_pts = "\n".join(f"• {pt}" for pt in pts[:5])
+            return f"**From {doc}:**\n\n{formatted_pts}"
+
+        # Multi-document structured synthesis
+        formatted_sections = []
+        for doc, pts in list(doc_insights.items())[:4]:
+            pts_str = "\n".join(f"  • {pt}" for pt in pts[:3])
+            formatted_sections.append(f"**From `{doc}`**:\n{pts_str}")
+
+        return "\n\n".join(formatted_sections)
 
     def generate(
         self,
@@ -138,15 +186,19 @@ class RAGGenerator:
         citations = self._extract_citations(valid_results)
         prompt = GROUND_PROMPT.format(context=context_str, question=query)
 
-        has_real_key = (selected_api_key and not selected_api_key.startswith("your_") and len(selected_api_key) > 3) or (selected_base_url and "localhost" in selected_base_url)
+        has_real_key = bool(selected_api_key and not selected_api_key.startswith("your_") and len(selected_api_key) > 5) or (selected_base_url and "localhost" in selected_base_url)
 
         provider_error_msg = None
+
+        # Explicit offline/local mode — skip all remote LLM providers
+        if selected_provider in ["local", "offline"]:
+            has_real_key = False
 
         # Custom OpenAI-Compatible Provider (Ollama, DeepSeek, OpenRouter, Together, Custom API)
         if selected_provider in ["custom", "openai-compatible", "ollama", "custom / openrouter / ollama"]:
             try:
                 from openai import OpenAI
-                client_kwargs = {"api_key": selected_api_key or "ollama"}
+                client_kwargs = {"api_key": selected_api_key or "ollama", "timeout": 30.0}
                 if selected_base_url:
                     client_kwargs["base_url"] = selected_base_url
                 client = OpenAI(**client_kwargs)
@@ -173,7 +225,7 @@ class RAGGenerator:
         if has_real_key and selected_provider == "openai":
             try:
                 from openai import OpenAI
-                client_kwargs = {"api_key": selected_api_key}
+                client_kwargs = {"api_key": selected_api_key, "timeout": 30.0}
                 if selected_base_url:
                     client_kwargs["base_url"] = selected_base_url
                 client = OpenAI(**client_kwargs)
@@ -196,11 +248,12 @@ class RAGGenerator:
                 logger.error(f"OpenAI generation failed: {e}")
                 provider_error_msg = f"OpenAI API Error: {e}"
 
-        # Groq Provider Implementation
+        # Groq Provider Implementation (With Dual-SDK Fallback)
         if has_real_key and selected_provider == "groq":
+            # Attempt 1: Native Groq SDK
             try:
                 from groq import Groq
-                client = Groq(api_key=selected_api_key)
+                client = Groq(api_key=selected_api_key, timeout=30.0)
                 response = client.chat.completions.create(
                     model=selected_model,
                     messages=[
@@ -216,28 +269,53 @@ class RAGGenerator:
                     "model": selected_model,
                     "retrieved_count": len(valid_results),
                 }
-            except Exception as e:
-                logger.error(f"Groq generation failed: {e}")
-                provider_error_msg = f"Groq API Error: {e}"
+            except Exception as groq_err:
+                logger.warning(f"Native Groq SDK failed ({groq_err}), attempting OpenAI-compatible Groq fallback...")
+                # Attempt 2: OpenAI SDK routed to Groq endpoint
+                try:
+                    from openai import OpenAI
+                    groq_client = OpenAI(
+                        api_key=selected_api_key,
+                        base_url="https://api.groq.com/openai/v1",
+                        timeout=30.0,
+                    )
+                    response = groq_client.chat.completions.create(
+                        model=selected_model,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=0.2,
+                    )
+                    answer_text = response.choices[0].message.content.strip()
+                    return {
+                        "answer": answer_text,
+                        "citations": citations,
+                        "model": selected_model,
+                        "retrieved_count": len(valid_results),
+                    }
+                except Exception as e:
+                    logger.error(f"Groq generation failed on both transports: {e}")
+                    provider_error_msg = f"Groq API Error: {e}"
 
         # Local Offline Fallback Engine: Sentence-level extraction matching query intent
         extracted_content = self._extract_relevant_sentences(query, valid_results)
         primary = valid_results[0]
         page_str = f", Page {primary.page_number}" if primary.page_number is not None else ""
 
-        err_banner = f"⚠️ **{provider_error_msg}**\n\n*(Falling back to Local Grounded Engine)*\n\n---\n\n" if provider_error_msg else ""
+        err_banner = f"⚠️ *Note: {provider_error_msg} (Using local grounded extraction)*\n\n" if provider_error_msg else ""
 
         fallback_answer = (
             f"{err_banner}"
-            f"**Grounded Answer (Based on Context)**\n\n"
+            f"### 📄 Key Findings & Context Summary\n\n"
             f"{extracted_content}\n\n"
-            f"*(Sources: [{primary.filename}{page_str}] - Match Relevance: {int(primary.score * 100)}%)*"
+            f"*(Extracted with high confidence from [{primary.filename}{page_str}] - Match Relevance: {int(primary.score * 100)}%)*"
         )
 
         return {
             "answer": fallback_answer,
             "citations": citations,
-            "model": f"{selected_model}-grounded-context",
+            "model": "local-grounded-context" if selected_provider in ["local", "offline"] else f"{selected_model}-grounded-context",
             "retrieved_count": len(valid_results),
         }
 

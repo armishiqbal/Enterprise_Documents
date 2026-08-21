@@ -13,7 +13,7 @@ import {
   HelpCircle,
   ExternalLink,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 import { queryRAG, CitationItem, GroundingInfo } from "@/lib/api";
 
 export interface Message {
@@ -28,6 +28,9 @@ export interface Message {
 interface ChatPanelProps {
   topK: number;
   similarityThreshold: number;
+  selectedProvider: string;
+  selectedModel: string;
+  searchStrategy: string;
   onQueryCompleted: (promptTokens: number, completionTokens: number) => void;
 }
 
@@ -41,6 +44,9 @@ const DEFAULT_SUGGESTIONS = [
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   topK,
   similarityThreshold,
+  selectedProvider,
+  selectedModel,
+  searchStrategy,
   onQueryCompleted,
 }) => {
   const [messages, setMessages] = useState<Message[]>([
@@ -51,7 +57,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         "Welcome to the **Enterprise Document Intelligence Platform**. Upload your files in the sidebar to perform grounded search, inspect page citations, or ask questions.",
       citations: [],
       grounding: null,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: "Welcome",
     },
   ]);
 
@@ -88,7 +94,27 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await queryRAG(text, topK, similarityThreshold);
+      let apiKey = "";
+      let baseUrl = "";
+      if (typeof window !== "undefined" && selectedProvider !== "Local") {
+        if (selectedProvider === "OpenAI") apiKey = localStorage.getItem("openai_api_key") || "";
+        else if (selectedProvider === "Groq") apiKey = localStorage.getItem("groq_api_key") || "";
+        else if (selectedProvider === "Custom") {
+          apiKey = localStorage.getItem("custom_api_key") || "";
+          baseUrl = localStorage.getItem("custom_base_url") || "";
+        }
+      }
+
+      const response = await queryRAG(
+        text,
+        topK,
+        similarityThreshold,
+        selectedProvider,
+        selectedModel,
+        apiKey,
+        baseUrl,
+        searchStrategy
+      );
 
       // Estimate tokens
       const pTokens = Math.max(1, Math.floor((text.length + 500) / 4));
@@ -109,7 +135,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       const errorMsg: Message = {
         id: `err_${Date.now()}`,
         role: "assistant",
-        content: `⚠️ **Error generating response:** ${err.message}. Please verify your API keys or try a different query.`,
+        content: `⚠️ Error generating response: ${err.message}. Please verify the backend is running on port 8080 and try again.`,
         citations: [],
         timestamp: new Date().toLocaleTimeString(),
       };
@@ -232,8 +258,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               )}
 
               {/* Message Content */}
-              <div className="text-sm prose prose-invert max-w-none prose-p:my-1 prose-pre:bg-slate-900 prose-pre:border prose-pre:border-white/10 leading-relaxed">
-                <ReactMarkdown>{m.content}</ReactMarkdown>
+              <div className="text-sm leading-relaxed">
+                <MarkdownRenderer content={m.content} />
               </div>
 
               {/* Citations Accordion */}
@@ -285,7 +311,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 </div>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 px-1">
+            <span suppressHydrationWarning className="text-[10px] text-slate-500 mt-1 px-1">
               {m.timestamp}
             </span>
           </div>
@@ -306,7 +332,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          handleSendMessage();
+          if (inputQuery.trim() && !isLoading) {
+            handleSendMessage();
+          }
         }}
         className="pt-3 flex gap-2"
       >
@@ -314,17 +342,30 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           type="text"
           value={inputQuery}
           onChange={(e) => setInputQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (inputQuery.trim() && !isLoading) {
+                handleSendMessage();
+              }
+            }
+          }}
           placeholder="Ask a question about your uploaded enterprise documents..."
           className="glass-input flex-1 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500"
           disabled={isLoading}
+          autoFocus
         />
         <button
           type="submit"
           disabled={isLoading || !inputQuery.trim()}
-          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition"
+          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition cursor-pointer disabled:cursor-not-allowed"
         >
-          <Send className="w-4 h-4" />
-          <span>Ask</span>
+          {isLoading ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Send className="w-4 h-4" />
+          )}
+          <span>{isLoading ? "Thinking..." : "Ask"}</span>
         </button>
       </form>
     </div>

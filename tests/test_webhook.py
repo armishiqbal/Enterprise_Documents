@@ -195,6 +195,43 @@ class TestWebhookEndpoints(unittest.TestCase):
         self.assertEqual(res_valid_bearer.status_code, 200)
         self.assertTrue(res_valid_bearer.json()["success"])
 
+        # 5. Request with valid X-API-Key header should succeed
+        res_valid_api_key = self.client.post(
+            "/api/v1/webhook",
+            json=payload,
+            headers={"X-API-Key": "super_secret_token_12345"}
+        )
+        self.assertEqual(res_valid_api_key.status_code, 200)
+        self.assertTrue(res_valid_api_key.json()["success"])
+
+    def test_ingest_text_with_x_api_key(self):
+        """Test POST /api/v1/ingest/text with X-API-Key authentication."""
+        Config.API_KEY = "my_custom_api_key_777"
+
+        text_payload = {
+            "filename": "security_policy_v2.txt",
+            "text": "Enterprise Security Policy: All employees must use multi-factor authentication.",
+            "metadata": {"category": "compliance", "priority": "high"}
+        }
+
+        # 1. Without header -> 401
+        res_no_key = self.client.post("/api/v1/ingest/text", json=text_payload)
+        self.assertEqual(res_no_key.status_code, 401)
+
+        # 2. With valid X-API-Key -> 201
+        res_valid_key = self.client.post(
+            "/api/v1/ingest/text",
+            json=text_payload,
+            headers={"X-API-Key": "my_custom_api_key_777"}
+        )
+        self.assertEqual(res_valid_key.status_code, 201)
+        data = res_valid_key.json()
+        self.assertEqual(data["filename"], "security_policy_v2.txt")
+        self.assertEqual(data["status"], "indexed")
+        self.assertGreater(data["chunks_generated"], 0)
+
+        Config.API_KEY = None
+
 
 if __name__ == "__main__":
     unittest.main()

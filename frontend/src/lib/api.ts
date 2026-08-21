@@ -8,6 +8,7 @@ export interface StatsResponse {
   total_chunks: number;
   unique_documents: number;
   persist_directory: string;
+  indexed_files?: string[];
 }
 
 export interface CitationItem {
@@ -60,41 +61,112 @@ export interface WebhookResponse {
   data?: any;
 }
 
-const API_BASE_URL = typeof window !== "undefined"
-  ? (process.env.NEXT_PUBLIC_API_URL || "")
-  : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
+export function getApiBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname || "localhost";
+    return `http://${hostname}:8080`;
+  }
+  return "http://127.0.0.1:8080";
+}
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+async function parseJsonResponse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(`Empty response body (HTTP ${res.status})`);
+  }
   try {
-    const res = await fetch(url, {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-      },
-    });
-
-    if (!res.ok) {
-      const errorBody = await res.text();
-      let errorMsg = `HTTP ${res.status}: ${res.statusText}`;
-      try {
-        const parsed = JSON.parse(errorBody);
-        if (parsed.detail) errorMsg = parsed.detail;
-      } catch {
-        if (errorBody) errorMsg = errorBody;
-      }
-      throw new Error(errorMsg);
-    }
-
-    return await res.json();
-  } catch (err: any) {
-    console.error(`API Error [${endpoint}]:`, err);
-    throw err;
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Invalid JSON response (HTTP ${res.status})`);
   }
 }
 
+function extractErrorMessage(status: number, statusText: string, bodyText: string): string {
+  let errorMsg = `HTTP ${status}: ${statusText}`;
+  if (!bodyText) return errorMsg;
+
+  try {
+    const parsed = JSON.parse(bodyText);
+    if (parsed.detail) {
+      return typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+    }
+    if (parsed.message) return parsed.message;
+  } catch {
+    if (bodyText.trim().startsWith("<")) {
+      const titleMatch = bodyText.match(/<title>(.*?)<\/title>/i);
+      if (titleMatch && titleMatch[1]) {
+        return `HTTP ${status} - ${titleMatch[1]}`;
+      }
+      return `HTTP ${status}: Backend service unavailable or route not found.`;
+    }
+    return bodyText;
+  }
+  return errorMsg;
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const baseUrls = typeof window !== "undefined"
+    ? ["", getApiBaseUrl(), "http://127.0.0.1:8080", "http://localhost:8080"]
+    : [getApiBaseUrl(), "http://127.0.0.1:8080", "http://localhost:8080"];
+
+  // Deduplicate
+  const uniqueBaseUrls = Array.from(new Set(baseUrls.filter((b) => b !== undefined)));
+
+  let lastError: any = null;
+
+  for (const base of uniqueBaseUrls) {
+    const url = `${base}${endpoint}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: options.signal || controller.signal,
+        headers: {
+          ...(options.headers || {}),
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errorBody = await res.text();
+        const errorMsg = extractErrorMessage(res.status, res.statusText, errorBody);
+        throw new Error(errorMsg);
+      }
+
+      return await parseJsonResponse<T>(res);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      lastError = err;
+      if (err.message && (err.message.startsWith("HTTP") || err.message.startsWith("Invalid JSON") || err.message.startsWith("Empty response"))) {
+        throw err;
+      }
+    }
+  }
+
+  const msg = lastError?.name === "AbortError"
+    ? "Request timed out after 25s. Please check if the FastAPI backend is running on port 8080."
+    : (lastError?.message || "Failed to connect to backend server on port 8080.");
+  throw new Error(msg);
+}
+
 export async function fetchStats(): Promise<StatsResponse> {
-  return request<StatsResponse>("/api/v1/stats");
+  try {
+    return await request<StatsResponse>("/api/v1/stats");
+  } catch {
+    return {
+      collection_name: "document_chunks",
+      total_chunks: 0,
+      unique_documents: 0,
+      persist_directory: "data/vectorstore",
+      indexed_files: [],
+    };
+  }
 }
 
 export async function uploadFiles(files: File[]): Promise<IngestBatchResponse> {
@@ -103,29 +175,62 @@ export async function uploadFiles(files: File[]): Promise<IngestBatchResponse> {
     formData.append("files", file);
   }
 
-  const url = `${API_BASE_URL}/api/v1/ingest`;
-  const res = await fetch(url, {
-    method: "POST",
-    body: formData,
-  });
+  const baseUrls = typeof window !== "undefined"
+    ? ["", getApiBaseUrl(), "http://127.0.0.1:8080", "http://localhost:8080"]
+    : [getApiBaseUrl(), "http://127.0.0.1:8080", "http://localhost:8080"];
+  const uniqueBaseUrls = Array.from(new Set(baseUrls));
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(errText || "Failed to upload files");
+  let lastError: any = null;
+
+  for (const base of uniqueBaseUrls) {
+    try {
+      const url = `${base}/api/v1/ingest`;
+      const res = await fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        const errorMsg = extractErrorMessage(res.status, res.statusText, errText);
+        throw new Error(errorMsg || "Failed to upload files");
+      }
+
+      return await parseJsonResponse<IngestBatchResponse>(res);
+    } catch (err: any) {
+      lastError = err;
+      if (err.message && (err.message.startsWith("HTTP") || err.message.startsWith("Invalid JSON") || err.message.startsWith("Empty response"))) {
+        throw err;
+      }
+    }
   }
 
-  return await res.json();
+  throw new Error(lastError?.message || "Failed to upload files to backend server.");
 }
 
 export async function queryRAG(
   query: string,
   k: number = 4,
-  score_threshold: number = 0.0
+  score_threshold: number = 0.0,
+  provider?: string,
+  model?: string,
+  apiKey?: string,
+  baseUrl?: string,
+  searchStrategy?: string
 ): Promise<QueryResponse> {
   return request<QueryResponse>("/api/v1/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, k, score_threshold }),
+    body: JSON.stringify({
+      query,
+      k,
+      score_threshold,
+      provider: provider?.toLowerCase(),
+      model,
+      api_key: apiKey,
+      base_url: baseUrl,
+      search_strategy: searchStrategy,
+    }),
   });
 }
 

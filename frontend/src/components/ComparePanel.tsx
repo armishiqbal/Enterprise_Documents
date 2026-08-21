@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Scale, FileText, Sparkles, Check, Hash } from "lucide-react";
 import { MetricCard } from "./MetricCard";
 
@@ -15,6 +15,14 @@ export const ComparePanel: React.FC<ComparePanelProps> = ({ indexedFiles }) => {
   const [doc2, setDoc2] = useState(fileOptions[1] || fileOptions[0] || "");
   const [isComparing, setIsComparing] = useState(false);
   const [comparisonResult, setComparisonResult] = useState<any | null>(null);
+
+  useEffect(() => {
+    const options = indexedFiles.filter((f) => f !== "All Documents");
+    if (options.length >= 2) {
+      setDoc1((prev) => (options.includes(prev) ? prev : options[0]));
+      setDoc2((prev) => (options.includes(prev) ? prev : options[1]));
+    }
+  }, [indexedFiles]);
 
   const handleCompare = () => {
     if (!doc1 || !doc2) return;

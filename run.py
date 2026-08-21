@@ -33,7 +33,7 @@ def find_free_port(preferred_port: int) -> int:
 
 
 def main():
-    api_port = find_free_port(8000)
+    api_port = find_free_port(8080)
     ui_port = find_free_port(8501)
 
     print("\n" + "=" * 60)

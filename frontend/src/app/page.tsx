@@ -42,6 +42,9 @@ export default function Home() {
     try {
       const data = await fetchStats();
       setStats(data);
+      if (data.indexed_files && data.indexed_files.length > 0) {
+        setIndexedFiles(["All Documents", ...data.indexed_files]);
+      }
     } catch {
       // Fallback stats for initial render or serverless start
       setStats({
@@ -49,6 +52,7 @@ export default function Home() {
         total_chunks: 0,
         unique_documents: 0,
         persist_directory: "data/vectorstore",
+        indexed_files: [],
       });
     }
   }, []);
@@ -180,6 +184,9 @@ export default function Home() {
             <ChatPanel
               topK={topK}
               similarityThreshold={similarityThreshold}
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              searchStrategy={searchStrategy}
               onQueryCompleted={handleQueryCompleted}
             />
           )}

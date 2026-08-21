@@ -11,6 +11,11 @@ class QueryRequest(BaseModel):
     query: str = Field(default=..., description="User question or search query string.")
     k: int = Field(default=4, ge=1, le=20, description="Number of document chunks to retrieve.")
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum similarity score threshold (0.0 to 1.0).")
+    provider: Optional[str] = Field(default=None, description="LLM provider name (openai, groq, custom, local).")
+    model: Optional[str] = Field(default=None, description="Specific model name override.")
+    api_key: Optional[str] = Field(default=None, description="Optional API key for dynamic frontend LLM requests.")
+    base_url: Optional[str] = Field(default=None, description="Optional custom base URL for OpenAI-compatible endpoints.")
+    search_strategy: Optional[str] = Field(default="cross-encoder", description="Retrieval strategy: cross-encoder, hybrid, or vector.")
 
 
 class CitationItem(BaseModel):
@@ -24,6 +29,15 @@ class CitationItem(BaseModel):
     snippet: str
 
 
+class GroundingInfo(BaseModel):
+    """Factual groundedness evaluation metadata."""
+    groundedness_score: float
+    score_percent: str
+    confidence_label: str
+    is_verified: bool
+    badge_color: str
+
+
 class QueryResponse(BaseModel):
     """Grounded answer and citation response payload."""
     query: str
@@ -31,6 +45,7 @@ class QueryResponse(BaseModel):
     citations: List[CitationItem]
     model: str
     retrieved_count: int
+    grounding: Optional[GroundingInfo] = None
 
 
 class IngestFileResponse(BaseModel):
@@ -40,6 +55,13 @@ class IngestFileResponse(BaseModel):
     doc_id: str
     chunks_generated: int
     status: str
+
+
+class IngestTextRequest(BaseModel):
+    """Payload for ingesting raw text or logs directly without multipart file upload."""
+    filename: str = Field(default="document.txt", description="Logical filename for document indexing.")
+    text: str = Field(..., description="Raw text or document body to chunk and index.")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Custom metadata tags.")
 
 
 class IngestBatchResponse(BaseModel):
@@ -55,6 +77,7 @@ class StatsResponse(BaseModel):
     total_chunks: int
     unique_documents: int
     persist_directory: str
+    indexed_files: Optional[List[str]] = Field(default_factory=list)
 
 
 class WebhookEventRequest(BaseModel):

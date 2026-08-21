@@ -24,9 +24,13 @@ class VectorStore:
 
         try:
             import chromadb
+            from chromadb.config import Settings
             self.persist_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Initializing ChromaDB PersistentClient at '{self.persist_dir}' (Collection: '{self.collection_name}')")
-            self.client = chromadb.PersistentClient(path=str(self.persist_dir))
+            self.client = chromadb.PersistentClient(
+                path=str(self.persist_dir),
+                settings=Settings(anonymized_telemetry=False, is_persistent=True),
+            )
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"},
@@ -79,16 +83,21 @@ class VectorStore:
 
             total_chunks = self.collection.count()
             unique_docs = set()
+            file_names = set()
             if total_chunks > 0:
                 result = self.collection.get(include=["metadatas"])
                 for meta in result.get("metadatas", []):
-                    if meta and "doc_id" in meta:
-                        unique_docs.add(meta["doc_id"])
+                    if meta:
+                        if "doc_id" in meta and meta["doc_id"]:
+                            unique_docs.add(meta["doc_id"])
+                        if "filename" in meta and meta["filename"]:
+                            file_names.add(meta["filename"])
 
             return {
                 "collection_name": self.collection_name,
                 "total_chunks": total_chunks,
                 "unique_documents": len(unique_docs),
+                "indexed_files": sorted(list(file_names)),
                 "persist_directory": str(self.persist_dir),
             }
         except Exception:
@@ -96,6 +105,7 @@ class VectorStore:
                 "collection_name": self.collection_name,
                 "total_chunks": 0,
                 "unique_documents": 0,
+                "indexed_files": [],
                 "persist_directory": str(self.persist_dir),
             }
 

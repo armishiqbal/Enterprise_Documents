@@ -19,6 +19,7 @@ from src.schemas import (
     QueryResponse,
     CitationItem,
     IngestFileResponse,
+    IngestTextRequest,
     IngestBatchResponse,
     StatsResponse,
     WebhookEventRequest,
@@ -90,8 +91,21 @@ def get_safe_stats() -> Dict[str, Any]:
             "collection_name": "document_chunks",
             "total_chunks": 0,
             "unique_documents": 0,
+            "indexed_files": [],
             "persist_directory": str(Config.VECTOR_STORE_DIR),
         }
+
+
+@app.get("/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
+def health_check():
+    """System health check and availability endpoint."""
+    return {
+        "status": "healthy",
+        "service": "Enterprise Document Intelligence Platform",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0",
+    }
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -300,19 +314,6 @@ def api_landing_page():
     return HTMLResponse(content=html_content)
 
 
-@app.get("/health", tags=["Health"])
-def health_check():
-    """System health check and status endpoint."""
-    from src.config import Config
-    return {
-        "status": "healthy",
-        "service": "Enterprise Document Intelligence Platform API",
-        "version": "1.0.0",
-        "embedding_model": Config.EMBEDDING_MODEL_NAME,
-        "vector_store_dir": str(Config.VECTOR_STORE_DIR),
-    }
-
-
 @app.get("/api/v1/stats", response_model=StatsResponse, tags=["Vector Store"])
 def get_stats():
     """Returns vector database collection index statistics."""
@@ -322,12 +323,20 @@ def get_stats():
         total_chunks=stats["total_chunks"],
         unique_documents=stats["unique_documents"],
         persist_directory=stats["persist_directory"],
+        indexed_files=stats.get("indexed_files", []),
     )
 
 
 @app.post("/api/v1/ingest", response_model=IngestBatchResponse, status_code=status.HTTP_201_CREATED, tags=["Ingestion"])
-async def ingest_documents(files: List[UploadFile] = File(...)):
-    """Uploads and indexes one or more document files (.pdf, .docx, .txt, .md)."""
+async def ingest_documents(
+    files: List[UploadFile] = File(...),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+    authorization: Optional[str] = Header(None),
+):
+    """Uploads and indexes one or more document files (.pdf, .docx, .txt, .md). Supports optional X-API-Key header."""
+    verify_webhook_secret(secret_header=x_webhook_secret, auth_header=authorization, api_key_header=x_api_key)
+
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
@@ -377,6 +386,25 @@ async def ingest_documents(files: List[UploadFile] = File(...)):
     )
 
 
+@app.post("/api/v1/ingest/text", response_model=IngestFileResponse, status_code=status.HTTP_201_CREATED, tags=["Ingestion"])
+def ingest_text_document(
+    req: IngestTextRequest,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+    authorization: Optional[str] = Header(None),
+):
+    """Directly ingests raw document text or log payloads with optional X-API-Key authentication."""
+    verify_webhook_secret(secret_header=x_webhook_secret, auth_header=authorization, api_key_header=x_api_key)
+    chunks_indexed = ingest_raw_text_payload(filename=req.filename, text=req.text, metadata=req.metadata)
+    return IngestFileResponse(
+        filename=req.filename,
+        file_type=Path(req.filename).suffix.lstrip(".") or "txt",
+        doc_id=req.filename,
+        chunks_generated=chunks_indexed,
+        status="indexed" if chunks_indexed > 0 else "empty_content",
+    )
+
+
 @app.post("/api/v1/query", response_model=QueryResponse, tags=["RAG Engine"])
 def query_documents(req: QueryRequest):
     """Performs vector similarity search and generates grounded answer with inline citations."""
@@ -385,8 +413,30 @@ def query_documents(req: QueryRequest):
         ret = get_retriever()
         gen = get_generator()
 
-        retrieved = ret.retrieve(query=req.query, k=req.k, score_threshold=req.score_threshold)
-        gen_output = gen.generate(query=req.query, results=retrieved)
+        # Multi-Strategy Retrieval (with graceful fallback to vector search)
+        strat = (req.search_strategy or "cross-encoder").lower()
+        try:
+            if "cross" in strat:
+                from src.reranker import CrossEncoderReranker
+                reranker = CrossEncoderReranker()
+                candidates = ret.retrieve_hybrid(query=req.query, k=req.k * 3)
+                retrieved = reranker.rerank(query=req.query, candidates=candidates, top_k=req.k)
+            elif "hybrid" in strat:
+                retrieved = ret.retrieve_hybrid(query=req.query, k=req.k)
+            else:
+                retrieved = ret.retrieve(query=req.query, k=req.k, score_threshold=req.score_threshold)
+        except Exception as retrieval_err:
+            logger.warning(f"Retrieval strategy '{strat}' failed ({retrieval_err}), falling back to vector search.")
+            retrieved = ret.retrieve(query=req.query, k=req.k, score_threshold=req.score_threshold)
+
+        gen_output = gen.generate(
+            query=req.query,
+            results=retrieved,
+            model_override=req.model,
+            provider_override=req.provider,
+            api_key_override=req.api_key,
+            base_url_override=req.base_url,
+        )
 
         citations = [
             CitationItem(
@@ -401,12 +451,26 @@ def query_documents(req: QueryRequest):
             for c in gen_output["citations"]
         ]
 
+        grounding = None
+        if retrieved and gen_output.get("citations"):
+            from src.guardrails import SelfCorrectionGuardrail
+            g_res = SelfCorrectionGuardrail.evaluate_groundedness(gen_output["answer"], retrieved)
+            from src.schemas import GroundingInfo
+            grounding = GroundingInfo(
+                groundedness_score=g_res["groundedness_score"],
+                score_percent=g_res["score_percent"],
+                confidence_label=g_res["confidence_label"],
+                is_verified=g_res["is_verified"],
+                badge_color=g_res["badge_color"],
+            )
+
         return QueryResponse(
             query=req.query,
             answer=gen_output["answer"],
             citations=citations,
             model=gen_output["model"],
             retrieved_count=gen_output["retrieved_count"],
+            grounding=grounding,
         )
     except Exception as e:
         from src.config import logger
@@ -441,14 +505,15 @@ def reset_vector_store():
 def verify_webhook_secret(
     secret_header: Optional[str] = None,
     auth_header: Optional[str] = None,
+    api_key_header: Optional[str] = None,
 ) -> bool:
-    """Validates incoming webhook request secret if WEBHOOK_SECRET is configured."""
+    """Validates incoming request X-API-Key, Webhook Secret, or Bearer token if configured."""
     from src.config import Config
-    expected_secret = Config.WEBHOOK_SECRET
+    expected_secret = Config.WEBHOOK_SECRET or Config.API_KEY
     if not expected_secret:
         return True  # Open / test mode if no secret configured
 
-    received_secret = secret_header
+    received_secret = api_key_header or secret_header
     if not received_secret and auth_header:
         if auth_header.startswith("Bearer "):
             received_secret = auth_header[7:].strip()
@@ -458,7 +523,7 @@ def verify_webhook_secret(
     if received_secret != expected_secret:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized: Invalid or missing webhook secret token.",
+            detail="Unauthorized: Invalid or missing API Key (provide 'X-API-Key: <key>' or 'Authorization: Bearer <key>').",
         )
     return True
 
@@ -525,6 +590,7 @@ def verify_webhook_endpoint(
 @app.post("/api/v1/webhook", response_model=WebhookResponse, tags=["Webhooks"])
 async def handle_webhook_event(
     payload: WebhookEventRequest,
+    api_key_header: Optional[str] = Header(None, alias="X-API-Key"),
     secret_header: Optional[str] = Header(None, alias="X-Webhook-Secret"),
     auth_header: Optional[str] = Header(None, alias="Authorization"),
 ):
@@ -538,8 +604,8 @@ async def handle_webhook_event(
     """
     from src.config import logger
 
-    # 1. Validate Secret Token if configured
-    verify_webhook_secret(secret_header=secret_header, auth_header=auth_header)
+    # 1. Validate Secret Token or X-API-Key if configured
+    verify_webhook_secret(secret_header=secret_header, auth_header=auth_header, api_key_header=api_key_header)
 
     event_name = (payload.event or payload.event_type or "ping").strip().lower()
     event_id = f"evt_{uuid.uuid4().hex[:12]}"
