@@ -32,6 +32,7 @@ interface ChatPanelProps {
   selectedModel: string;
   searchStrategy: string;
   onQueryCompleted: (promptTokens: number, completionTokens: number) => void;
+  initialQuery?: string;
 }
 
 const DEFAULT_SUGGESTIONS = [
@@ -48,6 +49,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   selectedModel,
   searchStrategy,
   onQueryCompleted,
+  initialQuery,
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -65,6 +67,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [expandedCitations, setExpandedCitations] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (initialQuery) {
+      setInputQuery(initialQuery);
+    }
+  }, [initialQuery]);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -29,9 +29,9 @@ An enterprise-grade **Retrieval-Augmented Generation (RAG)** platform designed f
 - ⚡ **Real-Time Response Streaming**: Word-by-word streaming generation for enhanced user experience.
 - 📊 **Token Usage & Cost Tracking**: Live monitoring of prompt/completion tokens and estimated API expenses in USD.
 - 🤖 **Multi-Provider LLM Support**:
-  - **OpenAI** (`gpt-4o`, `gpt-4o-mini`)
-  - **Groq** (`llama-3.3-70b-versatile`, `llama-3.1-70b-versatile`)
-  - **Custom / OpenRouter / Ollama**: Any OpenAI-compatible REST API endpoint.
+  - **Groq** (`llama-3.3-70b-versatile`, `deepseek-r1-distill-llama-70b`, `deepseek-r1-distill-qwen-32b`, `qwen-2.5-32b`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768`, `gemma2-9b-it`, or any custom model string)
+  - **OpenAI** (`gpt-4o`, `gpt-4o-mini`, `o3-mini`, `o1-mini`, `gpt-4-turbo`, or any custom model string)
+  - **Custom / OpenRouter / Ollama**: Any OpenAI-compatible REST API endpoint and model.
   - **Local Offline Engine**: Sentence-level query term extraction requiring zero external API keys.
 - 🎨 **Interactive Streamlit UI**: ChatGPT/Perplexity-grade dark workspace layout with glassmorphism styling and top-to-bottom message streams.
 - 🔌 **FastAPI REST Backend**: Full REST API service with interactive OpenAPI Swagger documentation at `/docs`.

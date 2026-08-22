@@ -248,39 +248,25 @@ class RAGGenerator:
                 logger.error(f"OpenAI generation failed: {e}")
                 provider_error_msg = f"OpenAI API Error: {e}"
 
-        # Groq Provider Implementation (With Dual-SDK Fallback)
+        # Groq Provider Implementation (With Dual-SDK Fallback & Decommissioned Model Auto-Upgrade)
         if has_real_key and selected_provider == "groq":
-            # Attempt 1: Native Groq SDK
-            try:
-                from groq import Groq
-                client = Groq(api_key=selected_api_key, timeout=30.0)
-                response = client.chat.completions.create(
-                    model=selected_model,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.2,
-                )
-                answer_text = response.choices[0].message.content.strip()
-                return {
-                    "answer": answer_text,
-                    "citations": citations,
-                    "model": selected_model,
-                    "retrieved_count": len(valid_results),
-                }
-            except Exception as groq_err:
-                logger.warning(f"Native Groq SDK failed ({groq_err}), attempting OpenAI-compatible Groq fallback...")
-                # Attempt 2: OpenAI SDK routed to Groq endpoint
+            groq_candidate_models = [selected_model]
+            # If selected_model is a known decommissioned model or fails with model_decommissioned, fallback to active alternatives
+            if selected_model in ["qwen-2.5-32b", "qwen-2.5-coder-32b", "llama3-70b-8192", "llama3-8b-8192", "qwen/qwen3-32b", "meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.1-70b-versatile"]:
+                groq_candidate_models = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b"]
+            else:
+                groq_candidate_models.extend(["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"])
+
+            # Deduplicate preserving order
+            groq_candidate_models = list(dict.fromkeys(groq_candidate_models))
+
+            for cand_model in groq_candidate_models:
+                # Attempt 1: Native Groq SDK
                 try:
-                    from openai import OpenAI
-                    groq_client = OpenAI(
-                        api_key=selected_api_key,
-                        base_url="https://api.groq.com/openai/v1",
-                        timeout=30.0,
-                    )
-                    response = groq_client.chat.completions.create(
-                        model=selected_model,
+                    from groq import Groq
+                    client = Groq(api_key=selected_api_key, timeout=30.0)
+                    response = client.chat.completions.create(
+                        model=cand_model,
                         messages=[
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": prompt},
@@ -291,12 +277,45 @@ class RAGGenerator:
                     return {
                         "answer": answer_text,
                         "citations": citations,
-                        "model": selected_model,
+                        "model": cand_model,
                         "retrieved_count": len(valid_results),
                     }
-                except Exception as e:
-                    logger.error(f"Groq generation failed on both transports: {e}")
-                    provider_error_msg = f"Groq API Error: {e}"
+                except Exception as groq_err:
+                    err_str = str(groq_err)
+                    logger.warning(f"Native Groq SDK failed with '{cand_model}': {err_str}")
+                    if "model_decommissioned" in err_str or "decommissioned" in err_str or "model_not_found" in err_str:
+                        continue
+
+                    # Attempt 2: OpenAI SDK routed to Groq endpoint
+                    try:
+                        from openai import OpenAI
+                        groq_client = OpenAI(
+                            api_key=selected_api_key,
+                            base_url="https://api.groq.com/openai/v1",
+                            timeout=30.0,
+                        )
+                        response = groq_client.chat.completions.create(
+                            model=cand_model,
+                            messages=[
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": prompt},
+                            ],
+                            temperature=0.2,
+                        )
+                        answer_text = response.choices[0].message.content.strip()
+                        return {
+                            "answer": answer_text,
+                            "citations": citations,
+                            "model": cand_model,
+                            "retrieved_count": len(valid_results),
+                        }
+                    except Exception as e:
+                        err_str2 = str(e)
+                        logger.error(f"Groq OpenAI fallback failed for '{cand_model}': {err_str2}")
+                        if "model_decommissioned" in err_str2 or "decommissioned" in err_str2 or "model_not_found" in err_str2:
+                            continue
+                        provider_error_msg = f"Groq API Error: {e}"
+                        break
 
         # Local Offline Fallback Engine: Sentence-level extraction matching query intent
         extracted_content = self._extract_relevant_sentences(query, valid_results)

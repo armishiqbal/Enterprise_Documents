@@ -136,3 +136,30 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Failed to reset vector store collection: {e}")
             return False
+
+    def get_document_text(self, filename: str) -> str:
+        """Retrieves all combined text content for a specific document filename."""
+        if not self.collection:
+            return ""
+        try:
+            result = self.collection.get(
+                where={"filename": filename},
+                include=["documents", "metadatas"],
+            )
+            docs = result.get("documents", [])
+            if docs:
+                return "\n\n".join(docs)
+        except Exception as e:
+            logger.warning(f"Error fetching chunks from vector store for '{filename}': {e}")
+
+        # Fallback: check upload directory
+        upload_path = Path(Config.UPLOAD_DIR) / filename
+        if upload_path.exists():
+            try:
+                from src.loaders import DocumentLoader
+                chunks = DocumentLoader.load_file(str(upload_path))
+                return "\n\n".join(c.text for c in chunks)
+            except Exception as read_err:
+                logger.warning(f"Error reading raw upload file '{filename}': {read_err}")
+        return ""
+

@@ -9,7 +9,6 @@ import {
   Layers,
   DollarSign,
   Cpu,
-  Shield,
   Sparkles,
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
@@ -46,7 +45,6 @@ export default function Home() {
         setIndexedFiles(["All Documents", ...data.indexed_files]);
       }
     } catch {
-      // Fallback stats for initial render or serverless start
       setStats({
         collection_name: "document_chunks",
         total_chunks: 0,
@@ -66,9 +64,15 @@ export default function Home() {
     setTotalPromptTokens((pt) => pt + pTokens);
     setTotalCompletionTokens((ct) => ct + cTokens);
 
-    // Approximate cost: $0.15/1M prompt, $0.60/1M output
     const queryCost = (pTokens / 1_000_000) * 0.15 + (cTokens / 1_000_000) * 0.6;
     setTotalCostUsd((c) => c + queryCost);
+  };
+
+  const [initialChatQuery, setInitialChatQuery] = useState<string>("");
+
+  const handleAskComparisonQuestion = (q: string) => {
+    setInitialChatQuery(q);
+    setActiveTab("chat");
   };
 
   const handleResetUsage = () => {
@@ -119,10 +123,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Top 5 Metrics Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        {/* Top Summary Metrics Ribbon */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <MetricCard
-            label="Total Docs"
+            label="Indexed Files"
             value={stats?.unique_documents ?? 0}
             icon={<FileText className="w-4 h-4" />}
             borderTopColor="#6366F1"
@@ -166,7 +170,7 @@ export default function Home() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition rounded-t-xl border-b-2 ${
+                className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition rounded-t-xl border-b-2 cursor-pointer ${
                   isActive
                     ? "bg-slate-900/80 text-indigo-400 border-indigo-500 shadow-sm"
                     : "text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40"
@@ -188,11 +192,17 @@ export default function Home() {
               selectedModel={selectedModel}
               searchStrategy={searchStrategy}
               onQueryCompleted={handleQueryCompleted}
+              initialQuery={initialChatQuery}
             />
           )}
 
           {activeTab === "compare" && (
-            <ComparePanel indexedFiles={indexedFiles} />
+            <ComparePanel
+              indexedFiles={indexedFiles}
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              onAskQuestion={handleAskComparisonQuestion}
+            />
           )}
 
           {activeTab === "tokens" && (

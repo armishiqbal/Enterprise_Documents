@@ -1,20 +1,50 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Scale, FileText, Sparkles, Check, Hash } from "lucide-react";
-import { MetricCard } from "./MetricCard";
+import {
+  Scale,
+  FileText,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  BookOpen,
+  Cpu,
+  Layers,
+  Clock,
+  Download,
+  Copy,
+  Check,
+  HelpCircle,
+  BarChart3,
+  Search,
+} from "lucide-react";
+import { compareDocuments, CompareResponse } from "@/lib/api";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ComparePanelProps {
   indexedFiles: string[];
+  selectedProvider?: string;
+  selectedModel?: string;
+  onAskQuestion?: (question: string) => void;
 }
 
-export const ComparePanel: React.FC<ComparePanelProps> = ({ indexedFiles }) => {
+export const ComparePanel: React.FC<ComparePanelProps> = ({
+  indexedFiles,
+  selectedProvider = "Groq",
+  selectedModel = "llama-3.3-70b-versatile",
+  onAskQuestion,
+}) => {
   const fileOptions = indexedFiles.filter((f) => f !== "All Documents");
 
   const [doc1, setDoc1] = useState(fileOptions[0] || "");
   const [doc2, setDoc2] = useState(fileOptions[1] || fileOptions[0] || "");
+  const [focusQuery, setFocusQuery] = useState("");
   const [isComparing, setIsComparing] = useState(false);
-  const [comparisonResult, setComparisonResult] = useState<any | null>(null);
+  const [comparisonResult, setComparisonResult] = useState<CompareResponse | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copiedReport, setCopiedReport] = useState(false);
+  const [activeKeywordTab, setActiveKeywordTab] = useState<"shared" | "doc1" | "doc2">("shared");
 
   useEffect(() => {
     const options = indexedFiles.filter((f) => f !== "All Documents");
@@ -24,27 +54,100 @@ export const ComparePanel: React.FC<ComparePanelProps> = ({ indexedFiles }) => {
     }
   }, [indexedFiles]);
 
-  const handleCompare = () => {
-    if (!doc1 || !doc2) return;
+  const handleCompare = async () => {
+    if (!doc1 || !doc2 || doc1 === doc2) return;
     setIsComparing(true);
+    setErrorMsg(null);
 
-    // Realistic client-side comparison simulation based on document names & metadata
-    setTimeout(() => {
-      const mockResult = {
-        doc1_name: doc1,
-        doc1_word_count: Math.floor(Math.random() * 300) + 250,
-        doc1_summary: `Executive analysis for ${doc1}: Focuses on operational constraints, deployment milestones, and policy architectures outlined in section 1 through 4.`,
-        doc1_unique_terms: ["compliance", "sla_matrix", "rbac_policy", "latency_limits", "audit_log"],
-        doc2_name: doc2,
-        doc2_word_count: Math.floor(Math.random() * 300) + 240,
-        doc2_summary: `Executive analysis for ${doc2}: Details architectural topology, scaling parameters, high availability failover procedures, and budget estimates.`,
-        doc2_unique_terms: ["failover", "horizontal_scale", "gpu_cluster", "throughput_max", "cost_basis"],
-        shared_keywords_count: 64,
-        shared_keywords_sample: ["security", "database", "retrieval", "latency", "vector", "api", "token", "encryption"],
-      };
-      setComparisonResult(mockResult);
+    try {
+      let apiKey = "";
+      let baseUrl = "";
+      if (typeof window !== "undefined") {
+        if (selectedProvider === "OpenAI") apiKey = localStorage.getItem("openai_api_key") || "";
+        else if (selectedProvider === "Groq") apiKey = localStorage.getItem("groq_api_key") || "";
+        else if (selectedProvider === "Custom") {
+          apiKey = localStorage.getItem("custom_api_key") || "";
+          baseUrl = localStorage.getItem("custom_base_url") || "";
+        }
+      }
+
+      const res = await compareDocuments(
+        doc1,
+        doc2,
+        focusQuery.trim(),
+        selectedProvider,
+        selectedModel,
+        apiKey,
+        baseUrl
+      );
+      setComparisonResult(res);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to execute document comparison.");
+    } finally {
       setIsComparing(false);
-    }, 600);
+    }
+  };
+
+  const handleCopyReport = () => {
+    if (!comparisonResult) return;
+    const text = `
+# Document Comparison Analysis: ${comparisonResult.doc1.name} vs ${comparisonResult.doc2.name}
+
+## 1. Quantitative Overview
+* **Semantic Overlap**: ${comparisonResult.semantic_overlap_percent} (Jaccard Score: ${comparisonResult.jaccard_similarity})
+* **${comparisonResult.doc1.name}**: ${comparisonResult.doc1.word_count} words | ${comparisonResult.doc1.sentence_count} sentences | Technical Density: ${comparisonResult.doc1.technical_density}% | Est. Read Time: ${comparisonResult.doc1.reading_time_mins} min
+* **${comparisonResult.doc2.name}**: ${comparisonResult.doc2.word_count} words | ${comparisonResult.doc2.sentence_count} sentences | Technical Density: ${comparisonResult.doc2.technical_density}% | Est. Read Time: ${comparisonResult.doc2.reading_time_mins} min
+
+## 2. AI Synthesis & Gap Analysis
+${comparisonResult.ai_synthesis.report_markdown}
+
+## 3. Shared Terminology (${comparisonResult.shared_keywords_count} terms)
+${comparisonResult.shared_keywords.join(", ")}
+    `.trim();
+
+    navigator.clipboard.writeText(text);
+    setCopiedReport(true);
+    setTimeout(() => setCopiedReport(false), 2500);
+  };
+
+  const handleDownloadReport = () => {
+    if (!comparisonResult) return;
+    const text = `
+# Executive Document Comparison Report
+**Generated By**: Enterprise Document Intelligence Engine (${comparisonResult.ai_synthesis.engine})  
+**Date**: ${new Date().toLocaleDateString()}
+
+---
+
+## 📊 Comparative Metrics
+| Metric | ${comparisonResult.doc1.name} | ${comparisonResult.doc2.name} |
+| :--- | :--- | :--- |
+| **Word Count** | ${comparisonResult.doc1.word_count} | ${comparisonResult.doc2.word_count} |
+| **Sentence Count** | ${comparisonResult.doc1.sentence_count} | ${comparisonResult.doc2.sentence_count} |
+| **Avg Sentence Length** | ${comparisonResult.doc1.avg_sentence_len} words | ${comparisonResult.doc2.avg_sentence_len} words |
+| **Technical Density** | ${comparisonResult.doc1.technical_density}% | ${comparisonResult.doc2.technical_density}% |
+| **Est. Reading Time** | ${comparisonResult.doc1.reading_time_mins} min | ${comparisonResult.doc2.reading_time_mins} min |
+
+---
+
+## 🧠 Deep AI Synthesis
+${comparisonResult.ai_synthesis.report_markdown}
+
+---
+
+## 🤝 Shared & Distinct Vocabulary
+* **Shared Keywords**: ${comparisonResult.shared_keywords.join(", ")}
+* **Unique to ${comparisonResult.doc1.name}**: ${comparisonResult.unique_to_doc1.join(", ")}
+* **Unique to ${comparisonResult.doc2.name}**: ${comparisonResult.unique_to_doc2.join(", ")}
+    `.trim();
+
+    const blob = new Blob([text], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Comparison_${comparisonResult.doc1.name}_vs_${comparisonResult.doc2.name}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (fileOptions.length < 2) {
@@ -53,150 +156,402 @@ export const ComparePanel: React.FC<ComparePanelProps> = ({ indexedFiles }) => {
         <Scale className="w-12 h-12 text-indigo-400 opacity-60" />
         <h3 className="text-lg font-bold text-slate-100">Document Comparison Requires At Least 2 Indexed Files</h3>
         <p className="text-sm text-slate-400 max-w-md">
-          Please upload and index two or more documents in the sidebar to compare word counts, key topics, unique terms, and executive summaries side-by-side.
+          Please upload and index two or more documents in the sidebar to compare word counts, technical density, vocabulary divergence, and AI gap analyses side-by-side.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-          <Scale className="w-5 h-5 text-indigo-400" />
-          <span>Side-by-Side Document Comparison Engine</span>
-        </h2>
-        <p className="text-xs text-slate-400 mt-1">
-          Select two indexed documents to compare key metrics, topic overlaps, and executive summaries.
-        </p>
-      </div>
-
-      {/* Selectors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="glass-card p-4 flex flex-col gap-2">
-          <label className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
-            Document A
-          </label>
-          <select
-            value={doc1}
-            onChange={(e) => setDoc1(e.target.value)}
-            className="glass-input p-2.5 text-sm w-full bg-slate-900"
-          >
-            {fileOptions.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
+    <div className="flex flex-col gap-6 pb-12">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <Scale className="w-5 h-5 text-indigo-400" />
+            <span>Deep Analytical Document Comparator</span>
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Perform exhaustive lexical, semantic, and AI-synthesized contrast analysis between any two indexed documents.
+          </p>
         </div>
 
-        <div className="glass-card p-4 flex flex-col gap-2">
-          <label className="text-xs font-bold text-sky-300 uppercase tracking-wider">
-            Document B
-          </label>
-          <select
-            value={doc2}
-            onChange={(e) => setDoc2(e.target.value)}
-            className="glass-input p-2.5 text-sm w-full bg-slate-900"
-          >
-            {fileOptions.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </div>
+        {comparisonResult && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopyReport}
+              className="glass-card px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 transition cursor-pointer"
+            >
+              {copiedReport ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedReport ? "Copied!" : "Copy Report"}</span>
+            </button>
+            <button
+              onClick={handleDownloadReport}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export .MD</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      <button
-        onClick={handleCompare}
-        disabled={isComparing || doc1 === doc2}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2"
-      >
-        <Sparkles className="w-4 h-4" />
-        <span>{isComparing ? "Analyzing Documents..." : "Compare Selected Documents"}</span>
-      </button>
-
-      {/* Comparison Results */}
-      {comparisonResult && (
-        <div className="space-y-6 pt-2">
-          {/* Comparison Metrics */}
-          <div className="grid grid-cols-3 gap-4">
-            <MetricCard
-              label={`Word Count (${comparisonResult.doc1_name})`}
-              value={comparisonResult.doc1_word_count}
-              borderTopColor="#6366F1"
-            />
-            <MetricCard
-              label={`Word Count (${comparisonResult.doc2_name})`}
-              value={comparisonResult.doc2_word_count}
-              borderTopColor="#38BDF8"
-            />
-            <MetricCard
-              label="Shared Keywords Overlap"
-              value={comparisonResult.shared_keywords_count}
-              borderTopColor="#10B981"
-            />
-          </div>
-
-          {/* Summaries & Unique Terms Side-by-Side */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="glass-card p-5 space-y-3 border-indigo-500/20">
-              <div className="flex items-center gap-2 font-bold text-indigo-400 text-sm">
-                <FileText className="w-4 h-4" />
-                <span>{comparisonResult.doc1_name} Summary</span>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-lg border border-white/5">
-                {comparisonResult.doc1_summary}
-              </p>
-              <div className="space-y-1">
-                <span className="text-xs font-semibold text-slate-400">Unique Terms:</span>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {comparisonResult.doc1_unique_terms.map((t: string, i: number) => (
-                    <span key={i} className="text-xs bg-indigo-950/60 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30 font-mono">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-card p-5 space-y-3 border-sky-500/20">
-              <div className="flex items-center gap-2 font-bold text-sky-400 text-sm">
-                <FileText className="w-4 h-4" />
-                <span>{comparisonResult.doc2_name} Summary</span>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-lg border border-white/5">
-                {comparisonResult.doc2_summary}
-              </p>
-              <div className="space-y-1">
-                <span className="text-xs font-semibold text-slate-400">Unique Terms:</span>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {comparisonResult.doc2_unique_terms.map((t: string, i: number) => (
-                    <span key={i} className="text-xs bg-sky-950/60 text-sky-300 px-2 py-0.5 rounded border border-sky-500/30 font-mono">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Shared Vocabulary */}
-          <div className="glass-card p-4 space-y-2">
-            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
-              🤝 Overlapping Shared Keywords:
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {comparisonResult.shared_keywords_sample.map((k: string, i: number) => (
-                <span key={i} className="text-xs bg-slate-900 text-emerald-300 px-2 py-1 rounded-md border border-emerald-500/20 font-mono">
-                  {k}
-                </span>
+      {/* Selectors & Focus Query Bar */}
+      <div className="glass-card p-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              <span>Document A (Primary)</span>
+            </label>
+            <select
+              value={doc1}
+              onChange={(e) => setDoc1(e.target.value)}
+              className="glass-input p-2.5 text-sm w-full bg-slate-900 font-medium"
+            >
+              {fileOptions.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
               ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              <span>Document B (Contrast Target)</span>
+            </label>
+            <select
+              value={doc2}
+              onChange={(e) => setDoc2(e.target.value)}
+              className="glass-input p-2.5 text-sm w-full bg-slate-900 font-medium"
+            >
+              {fileOptions.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Custom Focus Query Input */}
+        <div className="space-y-1.5 pt-1">
+          <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+            <Search className="w-3.5 h-3.5 text-amber-400" />
+            <span>Targeted Focus Query (Optional)</span>
+            <span className="text-[10px] text-slate-500 font-normal">
+              — Focus AI comparison on a specific domain (e.g. security rules, pricing, architectural topology)
+            </span>
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. Compare specific compliance guidelines, database handling, or operational requirements..."
+            value={focusQuery}
+            onChange={(e) => setFocusQuery(e.target.value)}
+            className="glass-input p-2.5 text-xs w-full"
+          />
+        </div>
+
+        {/* Action Button */}
+        <button
+          onClick={handleCompare}
+          disabled={isComparing || doc1 === doc2}
+          className="w-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-sky-500 hover:from-indigo-500 hover:to-sky-400 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2 cursor-pointer"
+        >
+          {isComparing ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>Extracting Real Chunks & Generating Synthesis...</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" />
+              <span>
+                {doc1 === doc2 ? "Please Select Two Distinct Documents" : `Run In-Depth Contrast Analysis`}
+              </span>
+            </>
+          )}
+        </button>
+
+        {errorMsg && (
+          <div className="p-3 bg-red-950/40 border border-red-500/30 rounded-lg text-xs text-red-300 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Comparison Results Area */}
+      {comparisonResult && (
+        <div className="space-y-6 pt-1 animate-in fade-in duration-500">
+          {/* 1. Executive Semantic Overlap Hero Banner */}
+          <div className="glass-card p-5 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/30 border border-indigo-500/20 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center font-bold text-indigo-400 text-lg">
+                  ⚡
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-sm text-slate-100">Thematic Overlap & Semantic Alignment</h3>
+                    <span className="text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">
+                      {comparisonResult.ai_synthesis.engine}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Jaccard Lexical Similarity: <span className="font-mono text-indigo-300">{comparisonResult.jaccard_similarity}</span> | Overlap:{" "}
+                    <span className="font-bold text-emerald-400">{comparisonResult.semantic_overlap_percent}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400 font-mono">
+                  {comparisonResult.semantic_overlap_percent}
+                </span>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  {parseFloat(comparisonResult.semantic_overlap_percent) > 40 ? "High Thematic Convergence" : "Divergent Domain Scopes"}
+                </p>
+              </div>
+            </div>
+
+            {/* Visual Overlap Bar */}
+            <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-white/5 flex">
+              <div
+                className="bg-gradient-to-r from-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-1000"
+                style={{ width: `${Math.max(5, Math.min(100, parseFloat(comparisonResult.semantic_overlap_percent)))}%` }}
+              />
             </div>
           </div>
+
+          {/* 2. Side-by-Side Quantitative Matrix */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Document A Metric Card */}
+            <div className="glass-card p-5 space-y-4 border-indigo-500/30">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                  <span className="text-xs font-bold text-indigo-300 truncate max-w-[220px]" title={comparisonResult.doc1.name}>
+                    {comparisonResult.doc1.name}
+                  </span>
+                </div>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 bg-indigo-950/80 text-indigo-300 rounded border border-indigo-500/30">
+                  Primary
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Words</span>
+                  <span className="text-sm font-bold text-slate-100 font-mono">{comparisonResult.doc1.word_count.toLocaleString()}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Tech Density</span>
+                  <span className="text-sm font-bold text-indigo-400 font-mono">{comparisonResult.doc1.technical_density}%</span>
+                </div>
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Read Time</span>
+                  <span className="text-sm font-bold text-slate-100 font-mono">{comparisonResult.doc1.reading_time_mins} min</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Real Content Summary</span>
+                </span>
+                <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/80 p-3 rounded-lg border border-white/5">
+                  {comparisonResult.doc1.summary}
+                </p>
+              </div>
+            </div>
+
+            {/* Document B Metric Card */}
+            <div className="glass-card p-5 space-y-4 border-sky-500/30">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+                  <span className="text-xs font-bold text-sky-300 truncate max-w-[220px]" title={comparisonResult.doc2.name}>
+                    {comparisonResult.doc2.name}
+                  </span>
+                </div>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 bg-sky-950/80 text-sky-300 rounded border border-sky-500/30">
+                  Target
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Words</span>
+                  <span className="text-sm font-bold text-slate-100 font-mono">{comparisonResult.doc2.word_count.toLocaleString()}</span>
+                </div>
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Tech Density</span>
+                  <span className="text-sm font-bold text-sky-400 font-mono">{comparisonResult.doc2.technical_density}%</span>
+                </div>
+                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Read Time</span>
+                  <span className="text-sm font-bold text-slate-100 font-mono">{comparisonResult.doc2.reading_time_mins} min</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Real Content Summary</span>
+                </span>
+                <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/80 p-3 rounded-lg border border-white/5">
+                  {comparisonResult.doc2.summary}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Deep AI Synthesis Report */}
+          <div className="glass-card p-6 border-indigo-500/30 space-y-4">
+            <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm uppercase tracking-wider border-b border-white/10 pb-3">
+              <Sparkles className="w-4 h-4" />
+              <span>AI Comparative Synthesis & Differential Gap Analysis</span>
+            </div>
+
+            <div className="prose prose-invert max-w-none text-xs leading-relaxed text-slate-200">
+              <MarkdownRenderer content={comparisonResult.ai_synthesis.report_markdown} />
+            </div>
+          </div>
+
+          {/* 4. Vocabulary & Keyword Contrast Tabs */}
+          <div className="glass-card p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+                <BarChart3 className="w-4 h-4 text-emerald-400" />
+                <span>Lexical & Keyword Decomposition</span>
+              </div>
+
+              <div className="flex gap-1.5 bg-slate-950 p-1 rounded-lg border border-white/5">
+                <button
+                  onClick={() => setActiveKeywordTab("shared")}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded transition cursor-pointer ${
+                    activeKeywordTab === "shared"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Shared ({comparisonResult.shared_keywords_count})
+                </button>
+                <button
+                  onClick={() => setActiveKeywordTab("doc1")}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded transition cursor-pointer ${
+                    activeKeywordTab === "doc1"
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Only in Doc A ({comparisonResult.unique_to_doc1.length})
+                </button>
+                <button
+                  onClick={() => setActiveKeywordTab("doc2")}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded transition cursor-pointer ${
+                    activeKeywordTab === "doc2"
+                      ? "bg-sky-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Only in Doc B ({comparisonResult.unique_to_doc2.length})
+                </button>
+              </div>
+            </div>
+
+            {activeKeywordTab === "shared" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-400">
+                  These terms appear in both documents, establishing the shared contextual baseline:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {comparisonResult.shared_keywords.map((k, i) => (
+                    <span
+                      key={i}
+                      className="text-xs bg-slate-900 text-emerald-300 px-2.5 py-1 rounded-md border border-emerald-500/20 font-mono"
+                    >
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeKeywordTab === "doc1" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-400">
+                  Key concepts unique to <span className="text-indigo-300 font-semibold">{comparisonResult.doc1.name}</span>:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {comparisonResult.unique_to_doc1.map((k, i) => (
+                    <span
+                      key={i}
+                      className="text-xs bg-indigo-950/60 text-indigo-300 px-2.5 py-1 rounded-md border border-indigo-500/30 font-mono"
+                    >
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeKeywordTab === "doc2" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-400">
+                  Key concepts unique to <span className="text-sky-300 font-semibold">{comparisonResult.doc2.name}</span>:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {comparisonResult.unique_to_doc2.map((k, i) => (
+                    <span
+                      key={i}
+                      className="text-xs bg-sky-950/60 text-sky-300 px-2.5 py-1 rounded-md border border-sky-500/30 font-mono"
+                    >
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 5. Clickable Context-Aware Cross-Document Questions */}
+          {comparisonResult.suggested_questions && comparisonResult.suggested_questions.length > 0 && (
+            <div className="glass-card p-5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider">
+                <HelpCircle className="w-4 h-4" />
+                <span>Suggested Cross-Document Queries</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Click any candidate question below to automatically copy and research across both files:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                {comparisonResult.suggested_questions.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      if (onAskQuestion) {
+                        onAskQuestion(q);
+                      } else {
+                        navigator.clipboard.writeText(q);
+                        alert(`Copied question to clipboard:\n\n"${q}"`);
+                      }
+                    }}
+                    className="text-left text-xs bg-slate-900/80 hover:bg-slate-850 text-slate-300 hover:text-white p-3 rounded-lg border border-white/5 hover:border-indigo-500/40 transition flex items-start gap-2 group cursor-pointer"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5 group-hover:translate-x-0.5 transition-transform" />
+                    <span className="leading-snug">{q}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
+

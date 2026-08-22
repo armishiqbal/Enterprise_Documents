@@ -273,8 +273,18 @@ with st.sidebar:
         custom_base_url_override = None
 
         if provider_choice == "OpenAI":
-            model_preset = st.selectbox("OpenAI Preset Model", ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "Other (Type Custom Below)"], index=0)
-            custom_m = st.text_input("✍️ Custom Model Name (Optional Override)", placeholder="e.g. o1-mini, gpt-4-turbo, etc.", help="Leave empty to use preset model above.")
+            openai_models = [
+                "gpt-4o-mini",
+                "gpt-4o",
+                "o3-mini",
+                "o1-mini",
+                "o1-preview",
+                "gpt-4-turbo",
+                "gpt-3.5-turbo",
+                "Other (Type Custom Below)",
+            ]
+            model_preset = st.selectbox("OpenAI Preset Model", openai_models, index=0)
+            custom_m = st.text_input("✍️ Custom OpenAI Model Name (Optional Override)", placeholder="e.g. o1, gpt-4-turbo-2024-04-09", help="Type any custom model ID. Leave empty to use preset model above.")
             selected_llm_model = custom_m.strip() if custom_m.strip() else (model_preset if model_preset != "Other (Type Custom Below)" else "gpt-4o-mini")
 
             input_key = st.text_input(
@@ -301,8 +311,23 @@ with st.sidebar:
                 st.warning("⚠️ Enter key and click 'Save Key' or switch to Local Engine")
 
         elif provider_choice == "Groq":
-            model_preset = st.selectbox("Groq Preset Model", ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768", "Other (Type Custom Below)"], index=0)
-            custom_m = st.text_input("✍️ Custom Groq Model Name (Optional Override)", placeholder="e.g. deepseek-r1-distill-llama-70b, gemma2-9b-it", help="Leave empty to use preset model above.")
+            groq_models = [
+                "llama-3.3-70b-versatile",
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+                "qwen/qwen3.6-27b",
+                "deepseek-r1-distill-llama-70b",
+                "llama-3.1-8b-instant",
+                "mixtral-8x7b-32768",
+                "gemma2-9b-it",
+                "Other (Type Custom Below)",
+            ]
+            model_preset = st.selectbox("Groq Preset Model", groq_models, index=0)
+            custom_m = st.text_input(
+                "✍️ Custom Groq Model Name (Optional Override)",
+                placeholder="e.g. deepseek-r1-distill-llama-70b, llama-3.3-70b-specdec",
+                help="Type any custom or newly released Groq model ID here. Leave empty to use preset model above.",
+            )
             selected_llm_model = custom_m.strip() if custom_m.strip() else (model_preset if model_preset != "Other (Type Custom Below)" else "llama-3.3-70b-versatile")
 
             input_key = st.text_input(
@@ -682,37 +707,70 @@ with tab_compare:
         with col_d2:
             doc2_sel = st.selectbox("Select Second Document", options=doc_names, index=min(1, len(doc_names) - 1))
 
-        if st.button("🔍 Compare Selected Documents", use_container_width=True):
-            res1 = vector_store.collection.get(where={"filename": doc1_sel}, include=["documents"])
-            res2 = vector_store.collection.get(where={"filename": doc2_sel}, include=["documents"])
+        focus_cmp = st.text_input(
+            "🎯 Targeted Focus Query (Optional)",
+            placeholder="e.g. Compare security policies, database operations, or cost models...",
+        )
 
-            text1 = "\n".join(res1.get("documents", []))
-            text2 = "\n".join(res2.get("documents", []))
+        if st.button("🔍 Execute In-Depth Document Comparison", use_container_width=True):
+            text1 = vector_store.get_document_text(doc1_sel)
+            text2 = vector_store.get_document_text(doc2_sel)
 
-            comp_res = DocumentComparator.compare_documents(doc1_sel, text1, doc2_sel, text2)
+            if not text1 or not text2:
+                st.error("Could not retrieve text content for one or both documents. Ensure both files are indexed.")
+            else:
+                with st.spinner("Analyzing document chunks & synthesizing AI contrast..."):
+                    comp_res = DocumentComparator.compare_documents_deep(
+                        doc1_name=doc1_sel,
+                        doc1_text=text1,
+                        doc2_name=doc2_sel,
+                        doc2_text=text2,
+                        focus_query=focus_cmp,
+                        provider=provider_choice.lower(),
+                        model=model_choice,
+                        api_key=st.session_state.get("api_key", ""),
+                    )
 
-            st.markdown("---")
-            m_col1, m_col2, m_col3 = st.columns(3)
-            with m_col1:
-                st.metric(f"Word Count ({doc1_sel})", comp_res["doc1_word_count"])
-            with m_col2:
-                st.metric(f"Word Count ({doc2_sel})", comp_res["doc2_word_count"])
-            with m_col3:
-                st.metric("Shared Keywords", comp_res["shared_keywords_count"])
+                st.markdown("---")
+                
+                # Hero Overlap Card
+                st.subheader("⚡ Thematic Overlap & Complexity Analysis")
+                c_ov1, c_ov2, c_ov3 = st.columns(3)
+                with c_ov1:
+                    st.metric("Semantic Overlap", comp_res["semantic_overlap_percent"])
+                with c_ov2:
+                    st.metric(f"Tech Density ({doc1_sel})", f"{comp_res['doc1']['technical_density']}%")
+                with c_ov3:
+                    st.metric(f"Tech Density ({doc2_sel})", f"{comp_res['doc2']['technical_density']}%")
 
-            st.markdown("### Executive Summaries")
-            sc1, sc2 = st.columns(2)
-            with sc1:
-                st.markdown(f"**📄 {doc1_sel} Summary:**")
-                st.info(comp_res["doc1_summary"])
-                st.markdown("**Unique Terms:** " + ", ".join(f"`{t}`" for t in comp_res["doc1_unique_terms"]))
-            with sc2:
-                st.markdown(f"**📄 {doc2_sel} Summary:**")
-                st.info(comp_res["doc2_summary"])
-                st.markdown("**Unique Terms:** " + ", ".join(f"`{t}`" for t in comp_res["doc2_unique_terms"]))
+                # Quantitative Matrix
+                m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+                with m_col1:
+                    st.metric(f"Words ({doc1_sel})", comp_res["doc1"]["word_count"])
+                with m_col2:
+                    st.metric(f"Words ({doc2_sel})", comp_res["doc2"]["word_count"])
+                with m_col3:
+                    st.metric(f"Read Time ({doc1_sel})", f"{comp_res['doc1']['reading_time_mins']} min")
+                with m_col4:
+                    st.metric(f"Read Time ({doc2_sel})", f"{comp_res['doc2']['reading_time_mins']} min")
 
-            st.markdown("### 🤝 Overlapping Shared Keywords")
-            st.write(", ".join(f"`{k}`" for k in comp_res["shared_keywords_sample"]))
+                # AI Synthesis
+                st.markdown("### 🧠 AI Comparative Synthesis & Gap Analysis")
+                st.markdown(comp_res["ai_synthesis"]["report_markdown"])
+
+                # Vocabulary decomposition
+                st.markdown("### 🤝 Lexical & Vocabulary Contrast")
+                sc1, sc2 = st.columns(2)
+                with sc1:
+                    st.markdown(f"**📄 Unique to {doc1_sel}:**")
+                    st.markdown(", ".join(f"`{t}`" for t in comp_res["unique_to_doc1"]))
+                with sc2:
+                    st.markdown(f"**📄 Unique to {doc2_sel}:**")
+                    st.markdown(", ".join(f"`{t}`" for t in comp_res["unique_to_doc2"]))
+
+                st.markdown(f"**Shared Common Keywords ({comp_res['shared_keywords_count']}):**")
+                st.write(", ".join(f"`{k}`" for k in comp_res["shared_keywords"]))
+
 
 
 # TAB 3: TOKEN USAGE & COST DASHBOARD

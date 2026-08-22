@@ -102,7 +102,19 @@ export const TokenDashboard: React.FC<TokenDashboardProps> = ({
                 <td className="py-2.5 px-3 font-semibold text-slate-100">llama-3.3-70b-versatile</td>
                 <td className="py-2.5 px-3 text-sky-400">$0.59</td>
                 <td className="py-2.5 px-3 text-sky-400">$0.79</td>
-                <td className="py-2.5 px-3 text-slate-400">Groq High Speed</td>
+                <td className="py-2.5 px-3 text-slate-400">Groq Flagship</td>
+              </tr>
+              <tr className="hover:bg-slate-900/40">
+                <td className="py-2.5 px-3 font-semibold text-slate-100">deepseek-r1-distill-llama-70b</td>
+                <td className="py-2.5 px-3 text-purple-400">$0.59</td>
+                <td className="py-2.5 px-3 text-purple-400">$0.79</td>
+                <td className="py-2.5 px-3 text-slate-400">Groq Reasoning</td>
+              </tr>
+              <tr className="hover:bg-slate-900/40">
+                <td className="py-2.5 px-3 font-semibold text-slate-100">llama-3.1-8b-instant</td>
+                <td className="py-2.5 px-3 text-emerald-400">$0.05</td>
+                <td className="py-2.5 px-3 text-emerald-400">$0.08</td>
+                <td className="py-2.5 px-3 text-slate-400">Groq Ultra Fast</td>
               </tr>
               <tr className="hover:bg-slate-900/40">
                 <td className="py-2.5 px-3 font-semibold text-slate-100">SentenceTransformers</td>

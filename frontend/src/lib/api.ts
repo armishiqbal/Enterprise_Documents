@@ -270,3 +270,54 @@ export async function sendWebhook(
     }),
   });
 }
+
+export interface DocMetrics {
+  name: string;
+  word_count: number;
+  sentence_count: number;
+  avg_sentence_len: number;
+  reading_time_mins: number;
+  technical_density: number;
+  summary: string;
+}
+
+export interface CompareResponse {
+  doc1: DocMetrics;
+  doc2: DocMetrics;
+  jaccard_similarity: number;
+  semantic_overlap_percent: string;
+  shared_keywords_count: number;
+  shared_keywords: string[];
+  unique_to_doc1: string[];
+  unique_to_doc2: string[];
+  ai_synthesis: {
+    report_markdown: string;
+    engine: string;
+  };
+  suggested_questions: string[];
+}
+
+export async function compareDocuments(
+  doc1_name: string,
+  doc2_name: string,
+  focus_query: string = "",
+  provider?: string,
+  model?: string,
+  apiKey?: string,
+  baseUrl?: string
+): Promise<CompareResponse> {
+  return request<CompareResponse>("/api/v1/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      doc1_name,
+      doc2_name,
+      focus_query,
+      provider: provider?.toLowerCase(),
+      model,
+      api_key: apiKey,
+      base_url: baseUrl,
+    }),
+  });
+}
+

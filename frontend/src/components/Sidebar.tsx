@@ -56,6 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Provider API Keys & Config (Stored in localStorage)
   const [openaiKey, setOpenaiKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
+  const [customGroqModel, setCustomGroqModel] = useState("");
+  const [customOpenaiModel, setCustomOpenaiModel] = useState("");
   const [customUrl, setCustomUrl] = useState("http://localhost:11434/v1");
   const [customKey, setCustomKey] = useState("");
   const [customModel, setCustomModel] = useState("llama3");
@@ -171,8 +173,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           value={selectedProvider}
           onChange={(e) => {
             setSelectedProvider(e.target.value);
-            if (e.target.value === "OpenAI") setSelectedModel("gpt-4o-mini");
-            else if (e.target.value === "Groq") setSelectedModel("llama-3.3-70b-versatile");
+            if (e.target.value === "OpenAI") setSelectedModel(customOpenaiModel.trim() || "gpt-4o-mini");
+            else if (e.target.value === "Groq") setSelectedModel(customGroqModel.trim() || "llama-3.3-70b-versatile");
             else if (e.target.value === "Local") setSelectedModel("local-grounded-context");
           }}
           className="glass-input p-2 text-sm w-full bg-slate-900"
@@ -187,14 +189,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {selectedProvider === "OpenAI" && (
           <div className="flex flex-col gap-2 mt-1">
             <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
+              value={
+                [
+                  "gpt-4o-mini",
+                  "gpt-4o",
+                  "o3-mini",
+                  "o1-mini",
+                  "o1-preview",
+                  "gpt-4-turbo",
+                  "gpt-3.5-turbo",
+                ].includes(selectedModel)
+                  ? selectedModel
+                  : "custom"
+              }
+              onChange={(e) => {
+                if (e.target.value !== "custom") {
+                  setSelectedModel(e.target.value);
+                  setCustomOpenaiModel("");
+                } else {
+                  setSelectedModel(customOpenaiModel.trim() || "gpt-4o-mini");
+                }
+              }}
               className="glass-input p-2 text-xs w-full bg-slate-900"
             >
               <option value="gpt-4o-mini">gpt-4o-mini (Recommended)</option>
               <option value="gpt-4o">gpt-4o (High Accuracy)</option>
+              <option value="o3-mini">o3-mini (Reasoning)</option>
+              <option value="o1-mini">o1-mini (Reasoning)</option>
+              <option value="gpt-4-turbo">gpt-4-turbo</option>
               <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+              <option value="custom">✍️ Custom Model (Enter Name Below)</option>
             </select>
+            <input
+              type="text"
+              placeholder="✍️ Custom OpenAI Model (e.g. o1, gpt-4-turbo)"
+              value={customOpenaiModel}
+              onChange={(e) => {
+                setCustomOpenaiModel(e.target.value);
+                if (e.target.value.trim()) {
+                  setSelectedModel(e.target.value.trim());
+                }
+              }}
+              className="glass-input p-2 text-xs w-full"
+            />
             <input
               type="password"
               placeholder="OpenAI API Key (sk-...)"
@@ -223,14 +260,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {selectedProvider === "Groq" && (
           <div className="flex flex-col gap-2 mt-1">
             <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
+              value={
+                [
+                  "llama-3.3-70b-versatile",
+                  "openai/gpt-oss-120b",
+                  "openai/gpt-oss-20b",
+                  "qwen/qwen3.6-27b",
+                  "deepseek-r1-distill-llama-70b",
+                  "llama-3.1-8b-instant",
+                  "mixtral-8x7b-32768",
+                  "gemma2-9b-it",
+                ].includes(selectedModel)
+                  ? selectedModel
+                  : "custom"
+              }
+              onChange={(e) => {
+                if (e.target.value !== "custom") {
+                  setSelectedModel(e.target.value);
+                  setCustomGroqModel("");
+                } else {
+                  setSelectedModel(customGroqModel.trim() || "llama-3.3-70b-versatile");
+                }
+              }}
               className="glass-input p-2 text-xs w-full bg-slate-900"
             >
-              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
-              <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile</option>
+              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended)</option>
+              <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (High Quality)</option>
+              <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
+              <option value="qwen/qwen3.6-27b">qwen/qwen3.6-27b</option>
+              <option value="deepseek-r1-distill-llama-70b">deepseek-r1-distill-llama-70b (Reasoning)</option>
+              <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fastest)</option>
               <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+              <option value="gemma2-9b-it">gemma2-9b-it</option>
+              <option value="custom">✍️ Custom Groq Model (Enter Below)</option>
             </select>
+            <input
+              type="text"
+              placeholder="✍️ Custom Groq Model Name (Optional Override)"
+              value={customGroqModel}
+              onChange={(e) => {
+                setCustomGroqModel(e.target.value);
+                if (e.target.value.trim()) {
+                  setSelectedModel(e.target.value.trim());
+                }
+              }}
+              className="glass-input p-2 text-xs w-full"
+            />
             <input
               type="password"
               placeholder="Groq API Key (gsk_...)"

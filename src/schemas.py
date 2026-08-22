@@ -98,3 +98,40 @@ class WebhookResponse(BaseModel):
     message: str
     timestamp: str
     data: Optional[Dict[str, Any]] = None
+
+
+class DocMetrics(BaseModel):
+    """Granular analytical and readability metrics for an individual document."""
+    name: str
+    word_count: int
+    sentence_count: int
+    avg_sentence_len: float
+    reading_time_mins: float
+    technical_density: float
+    summary: str
+
+
+class CompareRequest(BaseModel):
+    """Payload for comparing two indexed enterprise documents."""
+    doc1_name: str = Field(..., description="Filename of primary document.")
+    doc2_name: str = Field(..., description="Filename of secondary document to contrast against.")
+    focus_query: Optional[str] = Field(default="", description="Optional targeted query or domain focus for comparison.")
+    provider: Optional[str] = Field(default="groq", description="LLM provider for synthesis (groq, openai, custom, local).")
+    model: Optional[str] = Field(default=None, description="Model ID override.")
+    api_key: Optional[str] = Field(default=None, description="Optional API key for dynamic frontend LLM requests.")
+    base_url: Optional[str] = Field(default=None, description="Optional custom base URL.")
+
+
+class CompareResponse(BaseModel):
+    """Extensive comparison response payload containing metrics, vocabulary overlap, and AI synthesis."""
+    doc1: DocMetrics
+    doc2: DocMetrics
+    jaccard_similarity: float
+    semantic_overlap_percent: str
+    shared_keywords_count: int
+    shared_keywords: List[str]
+    unique_to_doc1: List[str]
+    unique_to_doc2: List[str]
+    ai_synthesis: Dict[str, Any]
+    suggested_questions: List[str]
+

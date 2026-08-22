@@ -11,8 +11,17 @@ class TokenTracker:
     PRICING_TABLE = {
         "gpt-4o-mini": {"prompt": 0.15, "completion": 0.60},
         "gpt-4o": {"prompt": 2.50, "completion": 10.00},
+        "o3-mini": {"prompt": 1.10, "completion": 4.40},
+        "o1-mini": {"prompt": 3.00, "completion": 12.00},
         "gpt-3.5-turbo": {"prompt": 0.50, "completion": 1.50},
-        "llama-3.1-70b-versatile": {"prompt": 0.00, "completion": 0.00},
+        "llama-3.3-70b-versatile": {"prompt": 0.59, "completion": 0.79},
+        "openai/gpt-oss-120b": {"prompt": 0.49, "completion": 0.69},
+        "openai/gpt-oss-20b": {"prompt": 0.10, "completion": 0.15},
+        "qwen/qwen3.6-27b": {"prompt": 0.20, "completion": 0.30},
+        "deepseek-r1-distill-llama-70b": {"prompt": 0.59, "completion": 0.79},
+        "llama-3.1-8b-instant": {"prompt": 0.05, "completion": 0.08},
+        "mixtral-8x7b-32768": {"prompt": 0.24, "completion": 0.24},
+        "gemma2-9b-it": {"prompt": 0.20, "completion": 0.20},
         "default": {"prompt": 0.15, "completion": 0.60},
     }
 

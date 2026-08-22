@@ -39,6 +39,17 @@ class TestAPI(unittest.TestCase):
         self.assertIn("citations", data)
         self.assertEqual(data["query"], payload["query"])
 
+    def test_compare_endpoint_validation(self):
+        """Verify POST /api/v1/compare returns error when unindexed documents are requested."""
+        payload = {
+            "doc1_name": "non_existent_1.pdf",
+            "doc2_name": "non_existent_2.pdf",
+            "provider": "local",
+        }
+        response = self.client.post("/api/v1/compare", json=payload)
+        self.assertEqual(response.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
+

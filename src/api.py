@@ -24,6 +24,9 @@ from src.schemas import (
     StatsResponse,
     WebhookEventRequest,
     WebhookResponse,
+    DocMetrics,
+    CompareRequest,
+    CompareResponse,
 )
 
 app = FastAPI(
@@ -476,6 +479,55 @@ def query_documents(req: QueryRequest):
         from src.config import logger
         logger.error(f"Query processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Query error: {str(e)}")
+
+
+@app.post("/api/v1/compare", response_model=CompareResponse, tags=["Document Analysis"])
+def compare_documents_endpoint(req: CompareRequest):
+    """Executes deep analytical comparison, readability scoring, and AI synthesis between two documents."""
+    try:
+        from src.summarizer import DocumentComparator
+        from src.config import logger
+
+        vs = get_vector_store()
+        text1 = vs.get_document_text(req.doc1_name)
+        text2 = vs.get_document_text(req.doc2_name)
+
+        if not text1 or not text2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not retrieve content for one or both documents: '{req.doc1_name}', '{req.doc2_name}'. Ensure both files are indexed.",
+            )
+
+        res = DocumentComparator.compare_documents_deep(
+            doc1_name=req.doc1_name,
+            doc1_text=text1,
+            doc2_name=req.doc2_name,
+            doc2_text=text2,
+            focus_query=req.focus_query or "",
+            provider=req.provider or "groq",
+            model=req.model or "",
+            api_key=req.api_key or "",
+            base_url=req.base_url or "",
+        )
+
+        return CompareResponse(
+            doc1=DocMetrics(**res["doc1"]),
+            doc2=DocMetrics(**res["doc2"]),
+            jaccard_similarity=res["jaccard_similarity"],
+            semantic_overlap_percent=res["semantic_overlap_percent"],
+            shared_keywords_count=res["shared_keywords_count"],
+            shared_keywords=res["shared_keywords"],
+            unique_to_doc1=res["unique_to_doc1"],
+            unique_to_doc2=res["unique_to_doc2"],
+            ai_synthesis=res["ai_synthesis"],
+            suggested_questions=res["suggested_questions"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        from src.config import logger
+        logger.error(f"Comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Comparison error: {str(e)}")
 
 
 @app.delete("/api/v1/documents/{doc_id}", tags=["Vector Store"])
