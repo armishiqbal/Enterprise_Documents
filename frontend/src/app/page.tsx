@@ -15,12 +15,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ComparePanel } from "@/components/ComparePanel";
 import { TokenDashboard } from "@/components/TokenDashboard";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { MetricCard } from "@/components/MetricCard";
 import { fetchStats, StatsResponse } from "@/lib/api";
 
 export default function Home() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "compare" | "tokens">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "compare" | "tokens" | "settings">("chat");
 
   // RAG Configuration States
   const [selectedProvider, setSelectedProvider] = useState<string>("Groq");
@@ -163,8 +164,8 @@ export default function Home() {
             { id: "chat", label: "💬 Chat Assistant", icon: MessageSquare },
             { id: "compare", label: "⚖️ Document Comparison", icon: Scale },
             { id: "tokens", label: "📊 Token Analytics", icon: Activity },
+            { id: "settings", label: "⚙️ System & ARTSA Settings", icon: Sparkles },
           ].map((tab) => {
-            const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -213,6 +214,10 @@ export default function Home() {
               totalCostUsd={totalCostUsd}
               onResetUsage={handleResetUsage}
             />
+          )}
+
+          {activeTab === "settings" && (
+            <SettingsPanel />
           )}
         </div>
       </main>

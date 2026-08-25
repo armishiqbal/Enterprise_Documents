@@ -49,6 +49,20 @@ class TestAPI(unittest.TestCase):
         response = self.client.post("/api/v1/compare", json=payload)
         self.assertEqual(response.status_code, 400)
 
+    def test_integration_test_endpoint(self):
+        """Verify POST /api/v1/integrations/test returns structured connectivity result."""
+        payload = {
+            "system_name": "ARTSA",
+            "target_url": "https://api.artsa.io/v1",
+            "api_key": "artsa_test_key_123",
+        }
+        response = self.client.post("/api/v1/integrations/test", json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["system_name"], "ARTSA")
+        self.assertIn("latency_ms", data)
+        self.assertIn("status_code", data)
+
 
 if __name__ == "__main__":
     unittest.main()

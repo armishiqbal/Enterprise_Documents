@@ -496,7 +496,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* SECTION 4: Database Management */}
+      {/* SECTION 4: External Integrations */}
+      <div className="glass-card p-4 flex flex-col gap-2.5">
+        <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+          <div className="flex items-center gap-1.5">
+            <Server className="w-4 h-4 text-indigo-400" />
+            <span>ARTSA & API Integrations</span>
+          </div>
+          <span className="text-emerald-400 text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-semibold">Ready</span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Configure ARTSA API keys and webhook connectors in the <strong>Settings & Integrations</strong> tab.
+        </p>
+      </div>
+
+      {/* SECTION 5: Database Management */}
       <div className="glass-card p-4 flex flex-col gap-2.5">
         <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
           <div className="flex items-center gap-1.5">

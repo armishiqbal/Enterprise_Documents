@@ -27,6 +27,8 @@ from src.schemas import (
     DocMetrics,
     CompareRequest,
     CompareResponse,
+    IntegrationTestRequest,
+    IntegrationTestResponse,
 )
 
 app = FastAPI(
@@ -528,6 +530,61 @@ def compare_documents_endpoint(req: CompareRequest):
         from src.config import logger
         logger.error(f"Comparison failed: {e}")
         raise HTTPException(status_code=500, detail=f"Comparison error: {str(e)}")
+
+
+@app.post("/api/v1/integrations/test", response_model=IntegrationTestResponse, tags=["Integrations"])
+def test_external_integration(req: IntegrationTestRequest):
+    """Verifies connectivity with an external system API (e.g. ARTSA, SIEM, or custom webhook)."""
+    import urllib.request
+    import time
+    from datetime import datetime, timezone
+
+    start_time = time.time()
+    system = req.system_name or "ARTSA"
+    url = req.target_url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = f"https://{url}"
+
+    headers = {
+        "User-Agent": "Enterprise-Document-Intelligence/1.0",
+        "Accept": "application/json",
+    }
+    if req.api_key:
+        headers["X-API-Key"] = req.api_key
+        headers["Authorization"] = f"Bearer {req.api_key}"
+
+    try:
+        http_req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(http_req, timeout=5) as resp:
+            latency = round((time.time() - start_time) * 1000, 2)
+            return IntegrationTestResponse(
+                success=True,
+                system_name=system,
+                status_code=resp.status,
+                latency_ms=latency,
+                message=f"Successfully connected to {system} API at {url}.",
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+    except urllib.error.HTTPError as http_err:
+        latency = round((time.time() - start_time) * 1000, 2)
+        return IntegrationTestResponse(
+            success=http_err.code < 500,
+            system_name=system,
+            status_code=http_err.code,
+            latency_ms=latency,
+            message=f"{system} responded with HTTP {http_err.code} ({http_err.reason}).",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception as err:
+        latency = round((time.time() - start_time) * 1000, 2)
+        return IntegrationTestResponse(
+            success=False,
+            system_name=system,
+            status_code=503,
+            latency_ms=latency,
+            message=f"Could not reach {system} at {url}: {str(err)}",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
 
 
 @app.delete("/api/v1/documents/{doc_id}", tags=["Vector Store"])

@@ -64,6 +64,23 @@ class IngestTextRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Custom metadata tags.")
 
 
+class IntegrationTestRequest(BaseModel):
+    """Payload to verify connectivity with external system APIs (e.g. ARTSA)."""
+    system_name: str = Field(default="ARTSA", description="Name of external system.")
+    target_url: str = Field(..., description="External API base URL to test.")
+    api_key: Optional[str] = Field(default=None, description="External API auth key or token.")
+
+
+class IntegrationTestResponse(BaseModel):
+    """Result of external integration connectivity test."""
+    success: bool
+    system_name: str
+    status_code: int
+    latency_ms: float
+    message: str
+    timestamp: str
+
+
 class IngestBatchResponse(BaseModel):
     """Batch file ingestion response payload."""
     total_files_processed: int
