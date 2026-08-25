@@ -15,10 +15,13 @@ class TestWebhookEndpoints(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         self.original_secret = Config.WEBHOOK_SECRET
+        self.original_api_key = Config.API_KEY
         Config.WEBHOOK_SECRET = None  # Default open for testing
+        Config.API_KEY = None
 
     def tearDown(self):
         Config.WEBHOOK_SECRET = self.original_secret
+        Config.API_KEY = self.original_api_key
 
     def test_get_webhook_status(self):
         """Test GET /api/v1/webhook returns active service status."""

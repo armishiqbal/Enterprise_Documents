@@ -27,16 +27,37 @@ class VectorStore:
             from chromadb.config import Settings
             self.persist_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Initializing ChromaDB PersistentClient at '{self.persist_dir}' (Collection: '{self.collection_name}')")
-            self.client = chromadb.PersistentClient(
-                path=str(self.persist_dir),
-                settings=Settings(anonymized_telemetry=False, is_persistent=True),
-            )
-            self.collection = self.client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"hnsw:space": "cosine"},
-            )
-        except Exception as e:
-            logger.warning(f"ChromaDB PersistentClient initialization fallback ({e}).")
+            try:
+                self.client = chromadb.PersistentClient(
+                    path=str(self.persist_dir),
+                    settings=Settings(anonymized_telemetry=False, is_persistent=True),
+                )
+                self.collection = self.client.get_or_create_collection(
+                    name=self.collection_name,
+                    metadata={"hnsw:space": "cosine"},
+                )
+            except BaseException as client_err:
+                logger.warning(f"PersistentClient error ({client_err}), attempting clean reinit...")
+                sqlite_file = self.persist_dir / "chroma.sqlite3"
+                if sqlite_file.exists():
+                    sqlite_file.unlink()
+                try:
+                    self.client = chromadb.PersistentClient(
+                        path=str(self.persist_dir),
+                        settings=Settings(anonymized_telemetry=False, is_persistent=True),
+                    )
+                    self.collection = self.client.get_or_create_collection(
+                        name=self.collection_name,
+                        metadata={"hnsw:space": "cosine"},
+                    )
+                except BaseException:
+                    self.client = chromadb.EphemeralClient(settings=Settings(anonymized_telemetry=False))
+                    self.collection = self.client.get_or_create_collection(
+                        name=self.collection_name,
+                        metadata={"hnsw:space": "cosine"},
+                    )
+        except BaseException as e:
+            logger.warning(f"ChromaDB initialization fallback ({e}).")
 
         self.embedder = Embedder()
 

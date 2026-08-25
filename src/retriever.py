@@ -154,6 +154,10 @@ class Retriever:
         Executes semantic vector similarity search for a query with Query Expansion.
         Returns scores normalized to [0.0, 1.0].
         """
+        if not self.vector_store or not self.vector_store.collection:
+            logger.warning("Vector store or collection is uninitialized.")
+            return []
+
         if not query or not query.strip():
             logger.warning("Empty query passed to retriever.")
             return []
@@ -162,7 +166,11 @@ class Retriever:
         logger.info(f"Retrieving top {k} chunk(s) for query: '{query[:60]}...' (Expanded: '{expanded_query[:60]}...')")
         query_vector = self.embedder.embed_query(expanded_query)
 
-        total_in_coll = self.vector_store.collection.count() or 1
+        try:
+            total_in_coll = self.vector_store.collection.count() or 1
+        except Exception:
+            total_in_coll = 1
+
         candidate_n = min(max(k * 5, 25), total_in_coll)
 
         chroma_args = {
