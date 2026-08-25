@@ -34,6 +34,7 @@ interface SidebarProps {
   selectedDocFilter: string;
   setSelectedDocFilter: (doc: string) => void;
   indexedFiles: string[];
+  onNavigateSettings?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -52,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedDocFilter,
   setSelectedDocFilter,
   indexedFiles,
+  onNavigateSettings,
 }) => {
   // Provider API Keys & Config (Stored in localStorage)
   const [openaiKey, setOpenaiKey] = useState("");
@@ -501,13 +503,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
             <Server className="w-4 h-4 text-indigo-400" />
-            <span>ARTSA & API Integrations</span>
+            <span>ARTSA & API Hub</span>
           </div>
-          <span className="text-emerald-400 text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-semibold">Ready</span>
+          <span className="text-emerald-400 text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-semibold">Active</span>
         </div>
         <p className="text-[11px] text-slate-400">
-          Configure ARTSA API keys and webhook connectors in the <strong>Settings & Integrations</strong> tab.
+          Configure ARTSA API endpoints, diagnostics, and Webhooks.
         </p>
+        {onNavigateSettings && (
+          <button
+            onClick={onNavigateSettings}
+            className="w-full mt-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs py-1.5 px-3 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer font-semibold"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Open Settings Hub</span>
+          </button>
+        )}
       </div>
 
       {/* SECTION 5: Database Management */}

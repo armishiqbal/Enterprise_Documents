@@ -10,6 +10,7 @@ import {
   DollarSign,
   Cpu,
   Sparkles,
+  Settings,
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -102,6 +103,7 @@ export default function Home() {
         selectedDocFilter={selectedDocFilter}
         setSelectedDocFilter={setSelectedDocFilter}
         indexedFiles={indexedFiles}
+        onNavigateSettings={() => setActiveTab("settings")}
       />
 
       {/* 2. Main Workspace Area */}
@@ -164,8 +166,9 @@ export default function Home() {
             { id: "chat", label: "💬 Chat Assistant", icon: MessageSquare },
             { id: "compare", label: "⚖️ Document Comparison", icon: Scale },
             { id: "tokens", label: "📊 Token Analytics", icon: Activity },
-            { id: "settings", label: "⚙️ System & ARTSA Settings", icon: Sparkles },
+            { id: "settings", label: "⚙️ System & ARTSA Settings", icon: Settings },
           ].map((tab) => {
+            const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
